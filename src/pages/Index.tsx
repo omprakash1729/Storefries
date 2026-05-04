@@ -24,7 +24,11 @@ const Index = () => {
       const { data, error } = await supabase.functions.invoke("generate-listing", {
         body: { url: url.trim() },
       });
-      if (error) throw error;
+      if (error) {
+        // Supabase edge function errors sometimes hide the real message in context
+        const realError = await error.context?.json().catch(() => null);
+        throw new Error(realError?.error || error.message);
+      }
       if (!data?.slug) throw new Error(data?.error ?? "Failed to generate");
       toast.success(data.cached ? "Loaded existing listing" : "Listing generated!");
       navigate(`/l/${data.slug}`);

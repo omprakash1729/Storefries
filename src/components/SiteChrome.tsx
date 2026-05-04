@@ -4,11 +4,9 @@ export const SiteHeader = () => {
   const { pathname } = useLocation();
   return (
     <header className="border-b border-border bg-background">
-      <div className="container flex h-16 items-center justify-between">
-        <Link to="/" className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-md btn-gradient" />
-          <span className="text-lg font-bold text-brand-blue">Storefries</span>
-          <span className="text-sm font-medium text-muted-foreground">Listing</span>
+      <div className="container flex h-24 items-center justify-between">
+        <Link to="/" className="flex items-center h-full w-[250px]">
+          <img src="/logo.png" alt="Storefries Logo" className="h-full py-2 w-auto object-contain scale-[2.5] origin-left ml-4" />
         </Link>
         <nav className="flex items-center gap-6 text-sm font-medium">
           <Link
