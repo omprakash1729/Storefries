@@ -1,1 +1,7 @@
 project_id = "zfificstknysitzsqwxj"
+
+[functions.generate-listing]
+verify_jwt = false
+
+[functions.place-photo]
+verify_jwt = false
