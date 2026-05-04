@@ -1,0 +1,227 @@
+// Generate or fetch a listing from a Google Maps URL
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+};
+
+const PLACES_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY")!;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+function slugify(input: string): string {
+  return input
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 80);
+}
+
+async function expandShortUrl(url: string): Promise<string> {
+  try {
+    const res = await fetch(url, { redirect: "follow" });
+    return res.url || url;
+  } catch {
+    return url;
+  }
+}
+
+function extractPlaceIdFromUrl(url: string): string | null {
+  // ?place_id=ChIJ...
+  const placeIdMatch = url.match(/[?&!]place_id=([A-Za-z0-9_-]+)/);
+  if (placeIdMatch) return placeIdMatch[1];
+  // !1s0x...:0x... is hex IDs (CID), not a place_id we can use directly
+  return null;
+}
+
+function extractQueryFromUrl(url: string): { query?: string; lat?: number; lng?: number } {
+  // /place/<NAME>/@lat,lng,
+  const placeMatch = url.match(/\/place\/([^\/]+)/);
+  const atMatch = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  let query: string | undefined;
+  if (placeMatch) {
+    query = decodeURIComponent(placeMatch[1].replace(/\+/g, " "));
+  }
+  let lat: number | undefined, lng: number | undefined;
+  if (atMatch) {
+    lat = parseFloat(atMatch[1]);
+    lng = parseFloat(atMatch[2]);
+  }
+  return { query, lat, lng };
+}
+
+async function findPlaceId(query: string, lat?: number, lng?: number): Promise<string | null> {
+  const body: any = { textQuery: query };
+  if (lat != null && lng != null) {
+    body.locationBias = {
+      circle: { center: { latitude: lat, longitude: lng }, radius: 500 },
+    };
+  }
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": PLACES_KEY,
+      "X-Goog-FieldMask": "places.id,places.displayName",
+    },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    console.error("searchText error", json);
+    return null;
+  }
+  return json.places?.[0]?.id ?? null;
+}
+
+async function getPlaceDetails(placeId: string) {
+  const fieldMask = [
+    "id",
+    "displayName",
+    "formattedAddress",
+    "addressComponents",
+    "internationalPhoneNumber",
+    "nationalPhoneNumber",
+    "websiteUri",
+    "googleMapsUri",
+    "primaryTypeDisplayName",
+    "types",
+    "rating",
+    "userRatingCount",
+    "location",
+    "regularOpeningHours",
+    "photos",
+    "reviews",
+    "editorialSummary",
+  ].join(",");
+
+  const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
+    headers: {
+      "X-Goog-Api-Key": PLACES_KEY,
+      "X-Goog-FieldMask": fieldMask,
+    },
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(`Place Details error: ${JSON.stringify(json)}`);
+  }
+  return json;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    if (!PLACES_KEY) throw new Error("GOOGLE_PLACES_API_KEY missing");
+
+    const { url } = await req.json();
+    if (!url || typeof url !== "string") {
+      return new Response(JSON.stringify({ error: "Missing url" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    let workingUrl = url.trim();
+    if (/maps\.app\.goo\.gl|goo\.gl\/maps/.test(workingUrl)) {
+      workingUrl = await expandShortUrl(workingUrl);
+    }
+
+    let placeId = extractPlaceIdFromUrl(workingUrl);
+
+    if (!placeId) {
+      const { query, lat, lng } = extractQueryFromUrl(workingUrl);
+      if (!query) {
+        return new Response(
+          JSON.stringify({ error: "Could not extract business info from URL" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      placeId = await findPlaceId(query, lat, lng);
+    }
+
+    if (!placeId) {
+      return new Response(JSON.stringify({ error: "Place not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+    // Return existing if present
+    const { data: existing } = await supabase
+      .from("listings")
+      .select("slug")
+      .eq("place_id", placeId)
+      .maybeSingle();
+
+    if (existing) {
+      return new Response(JSON.stringify({ slug: existing.slug, cached: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const details = await getPlaceDetails(placeId);
+
+    const name = details.displayName?.text ?? "Business";
+    const city =
+      details.addressComponents?.find((c: any) =>
+        c.types?.includes("locality"),
+      )?.shortText ?? "";
+
+    let baseSlug = slugify(`${name}-${city}`);
+    if (!baseSlug) baseSlug = slugify(name) || "listing";
+    let slug = baseSlug;
+    let n = 1;
+    // ensure unique
+    while (true) {
+      const { data: clash } = await supabase
+        .from("listings")
+        .select("id")
+        .eq("slug", slug)
+        .maybeSingle();
+      if (!clash) break;
+      n += 1;
+      slug = `${baseSlug}-${n}`;
+    }
+
+    const row = {
+      slug,
+      place_id: placeId,
+      name,
+      formatted_address: details.formattedAddress ?? null,
+      phone: details.internationalPhoneNumber ?? details.nationalPhoneNumber ?? null,
+      website: details.websiteUri ?? null,
+      category: details.primaryTypeDisplayName?.text ?? details.types?.[0] ?? null,
+      rating: details.rating ?? null,
+      user_ratings_total: details.userRatingCount ?? null,
+      lat: details.location?.latitude ?? null,
+      lng: details.location?.longitude ?? null,
+      opening_hours: details.regularOpeningHours ?? null,
+      photos: details.photos ?? null,
+      reviews: details.reviews ?? null,
+      editorial_summary: details.editorialSummary?.text ?? null,
+      google_maps_url: details.googleMapsUri ?? null,
+      raw: details,
+    };
+
+    const { error: insertErr } = await supabase.from("listings").insert(row);
+    if (insertErr) throw insertErr;
+
+    return new Response(JSON.stringify({ slug, cached: false }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    console.error(e);
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return new Response(JSON.stringify({ error: msg }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});

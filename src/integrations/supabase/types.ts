@@ -14,7 +14,75 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      listings: {
+        Row: {
+          category: string | null
+          created_at: string
+          editorial_summary: string | null
+          formatted_address: string | null
+          google_maps_url: string | null
+          id: string
+          lat: number | null
+          lng: number | null
+          name: string
+          opening_hours: Json | null
+          phone: string | null
+          photos: Json | null
+          place_id: string
+          rating: number | null
+          raw: Json | null
+          reviews: Json | null
+          slug: string
+          updated_at: string
+          user_ratings_total: number | null
+          website: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          editorial_summary?: string | null
+          formatted_address?: string | null
+          google_maps_url?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          name: string
+          opening_hours?: Json | null
+          phone?: string | null
+          photos?: Json | null
+          place_id: string
+          rating?: number | null
+          raw?: Json | null
+          reviews?: Json | null
+          slug: string
+          updated_at?: string
+          user_ratings_total?: number | null
+          website?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          editorial_summary?: string | null
+          formatted_address?: string | null
+          google_maps_url?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          name?: string
+          opening_hours?: Json | null
+          phone?: string | null
+          photos?: Json | null
+          place_id?: string
+          rating?: number | null
+          raw?: Json | null
+          reviews?: Json | null
+          slug?: string
+          updated_at?: string
+          user_ratings_total?: number | null
+          website?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
