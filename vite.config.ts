@@ -10,6 +10,13 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    proxy: {
+      "/api/serpapi": {
+        target: "https://serpapi.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/serpapi/, ""),
+      },
+    },
   },
   plugins: [react()],
   resolve: {

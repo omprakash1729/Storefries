@@ -10,6 +10,7 @@ const corsHeaders = {
 const PLACES_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SERPAPI_KEY = Deno.env.get("SERPAPI_KEY") || "b533f725f2bcd19420d0e872e3ef639de8a792082f1ea125508b3cfa70e05a4b";
 
 function slugify(input: string): string {
   return input
@@ -112,6 +113,36 @@ async function getPlaceDetails(placeId: string) {
   return json;
 }
 
+async function fetchGmbPosts(name: string, address: string) {
+  try {
+    const query = encodeURIComponent(`${name} ${address}`);
+    const mapsRes = await fetch(`https://serpapi.com/search.json?engine=google_maps&q=${query}&api_key=${SERPAPI_KEY}`);
+    const mapsJson = await mapsRes.json();
+    const dataId = mapsJson.local_results?.[0]?.data_id || mapsJson.place_results?.data_id;
+    
+    if (!dataId) return [];
+
+    const postsRes = await fetch(`https://serpapi.com/search.json?engine=google_maps_posts&data_id=${dataId}&api_key=${SERPAPI_KEY}`);
+    const postsJson = await postsRes.json();
+    
+    if (!postsJson.posts || !Array.isArray(postsJson.posts)) return [];
+    
+    return postsJson.posts.map((post: any) => ({
+      title: post.title,
+      content: post.description || post.snippet,
+      photoUri: post.thumbnails?.[0] || post.thumbnail,
+      publishTime: post.posted_at_text || post.date,
+      callToAction: post.online_link ? {
+        url: post.online_link || post.link,
+        label: post.online_link_text || "Learn more"
+      } : undefined
+    }));
+  } catch (error) {
+    console.error("Error fetching GMB posts:", error);
+    return [];
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -208,6 +239,7 @@ Deno.serve(async (req) => {
       editorial_summary: details.editorialSummary?.text ?? null,
       google_maps_url: details.googleMapsUri ?? null,
       raw: details,
+      posts: await fetchGmbPosts(name, details.formattedAddress || ""),
     };
 
     const { error: insertErr } = await supabase.from("listings").insert(row);
