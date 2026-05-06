@@ -60,17 +60,56 @@ const Listings = () => {
     return (2.0 * intersectionSize) / (bg1.size + bg2.size);
   };
 
+  const cleanNameFromLocation = (name: string, address: string | null) => {
+    let rawClean = name.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!address) return rawClean;
+    
+    const addressLower = address.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ');
+    const addressWords = new Set(addressLower.split(' ').filter(w => w.length > 2));
+    
+    const nameWords = rawClean.split(' ');
+    
+    let wordsToRemove = 0;
+    // Only check the last 2 words at most to prevent stripping the whole name
+    const maxToRemove = Math.min(2, nameWords.length - 1);
+    
+    for (let i = nameWords.length - 1; i >= nameWords.length - maxToRemove; i--) {
+      // Protected words that shouldn't be stripped even if they appear in the address
+      const protectedWords = ['hospital', 'clinic', 'restaurant', 'cafe', 'store', 'shop', 'mart', 'supermarket', 'school', 'college', 'university', 'gym', 'salon', 'spa'];
+      if (protectedWords.includes(nameWords[i])) {
+        break;
+      }
+      
+      if (addressWords.has(nameWords[i])) {
+        wordsToRemove++;
+      } else {
+        break;
+      }
+    }
+    
+    if (wordsToRemove > 0) {
+      return nameWords.slice(0, nameWords.length - wordsToRemove).join(' ');
+    }
+    
+    return rawClean;
+  };
+
   // ML-style Clustering Algorithm
   const clusterListings = (items: Row[]) => {
     const clusters: Record<string, Row[]> = {};
     const clusterCenters: Record<string, string> = {};
 
-    // Sort by name length so shortest (base) names become the cluster centers
-    const sortedRows = [...items].sort((a, b) => a.name.length - b.name.length);
+    // First clean the names and map them
+    const cleanedItems = items.map(row => ({
+      ...row,
+      cleanName: cleanNameFromLocation(row.name, row.formatted_address)
+    }));
+
+    // Sort by clean name length so shortest (base) names become the cluster centers
+    const sortedRows = [...cleanedItems].sort((a, b) => a.cleanName.length - b.cleanName.length);
 
     for (const row of sortedRows) {
-      // Clean up string: remove special chars, normalize spaces
-      const rawClean = row.name.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+      const rawClean = row.cleanName;
       
       let bestMatch: string | null = null;
       let highestScore = 0;
@@ -78,6 +117,13 @@ const Listings = () => {
       for (const [displayBrand, centerClean] of Object.entries(clusterCenters)) {
         // High confidence match: If the longer name simply starts with the base brand name
         if (rawClean.startsWith(centerClean + ' ') || rawClean === centerClean) {
+          bestMatch = displayBrand;
+          highestScore = 1;
+          break;
+        }
+        
+        // Also check if the centerClean starts with rawClean (in case sorting didn't perfectly order by prefix)
+        if (centerClean.startsWith(rawClean + ' ')) {
           bestMatch = displayBrand;
           highestScore = 1;
           break;
@@ -91,13 +137,16 @@ const Listings = () => {
         }
       }
 
+      // Remove cleanName before pushing to clusters to keep types clean
+      const { cleanName, ...originalRow } = row;
+
       if (bestMatch && highestScore > 0.65) {
-        clusters[bestMatch].push(row);
+        clusters[bestMatch].push(originalRow as Row);
       } else {
         // Create new cluster
         // Title Case the base name for display
         const displayBrand = rawClean.replace(/\b\w/g, c => c.toUpperCase());
-        clusters[displayBrand] = [row];
+        clusters[displayBrand] = [originalRow as Row];
         clusterCenters[displayBrand] = rawClean;
       }
     }

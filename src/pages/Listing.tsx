@@ -48,6 +48,10 @@ const ListingPage = () => {
   const [isHoveringPosts, setIsHoveringPosts] = useState(false);
   const [livePosts, setLivePosts] = useState<any[] | null>(null);
   const [liveTags, setLiveTags] = useState<string[] | null>(null);
+  const [liveAbout, setLiveAbout] = useState<any[] | null>(null);
+  const [liveServiceOptions, setLiveServiceOptions] = useState<any | null>(null);
+  const [liveDescription, setLiveDescription] = useState<string | null>(null);
+  const [lightboxState, setLightboxState] = useState<{ index: number; items: Array<{ src: string; caption?: string; date?: string }> } | null>(null);
 
   useEffect(() => {
     if (!slug) return;
@@ -61,6 +65,17 @@ const ListingPage = () => {
         setLoading(false);
       });
   }, [slug]);
+
+  useEffect(() => {
+    if (lightboxState) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [lightboxState]);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -140,9 +155,39 @@ const ListingPage = () => {
         if (placeResult?.type && Array.isArray(placeResult.type)) {
           setLiveTags(placeResult.type);
         }
+        
+        if (placeResult?.about && Array.isArray(placeResult.about)) {
+          setLiveAbout(placeResult.about);
+        }
+        
+        if (placeResult?.service_options) {
+          setLiveServiceOptions(placeResult.service_options);
+        }
+
+        // Parse the extensions array: [{service_options: ["Onsite services"]}, {amenities: ["Restroom"]}, ...]
+        // Convert to the same format as liveAbout: [{id, options: [{name, enabled}]}]
+        if (placeResult?.extensions && Array.isArray(placeResult.extensions)) {
+          const normalized = placeResult.extensions.map((ext: Record<string, string[]>) => {
+            const [id, values] = Object.entries(ext)[0] || [];
+            if (!id || !Array.isArray(values)) return null;
+            return {
+              id,
+              options: values.map((v: string) => ({ name: v, enabled: true }))
+            };
+          }).filter(Boolean);
+          if (normalized.length > 0) {
+            // Merge with existing liveAbout (avoid duplicates by id)
+            setLiveAbout(prev => {
+              const prevIds = new Set((prev || []).map((s: any) => s.id));
+              const newSections = normalized.filter((s: any) => !prevIds.has(s.id));
+              return [...(prev || []), ...newSections];
+            });
+          }
+        }
 
         const dataId = placeResult?.data_id;
         if (!dataId) return;
+
 
         // Only fetch posts if they are missing from the DB
         if (!listing.posts || listing.posts.length === 0) {
@@ -245,6 +290,28 @@ const ListingPage = () => {
 
   // Format whatsapp link
   const whatsappLink = listing.phone ? `https://wa.me/${listing.phone.replace(/[^0-9]/g, "")}` : null;
+
+  const openGalleryLightbox = (startIndex: number) => {
+    const items = photos.slice(1, 10).map(p => ({
+      src: photoUrl(p.name, 1600),
+      caption: `${listing.name} Gallery Image`
+    }));
+    setLightboxState({ index: startIndex, items });
+  };
+
+  const openPostsLightbox = (postIndex: number) => {
+    if (!posts[postIndex]?.photoUri) return;
+    const items = posts.filter(p => p.photoUri).map(p => ({
+      src: p.photoUri!,
+      caption: p.content || p.title,
+      date: p.publishTime
+    }));
+    const clickedSrc = posts[postIndex].photoUri;
+    const itemsIndex = items.findIndex(i => i.src === clickedSrc);
+    if (itemsIndex !== -1) {
+      setLightboxState({ index: itemsIndex, items });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -350,12 +417,16 @@ const ListingPage = () => {
               <div className="space-y-6 min-w-0">
                 <h2 className="text-2xl md:text-3xl font-bold break-words">About {listing.name}</h2>
                 <div className="prose prose-sm md:prose-base dark:prose-invert max-w-none text-muted-foreground leading-relaxed break-words">
-                  {listing.editorial_summary ? (
+                  {liveDescription ? (
+                    <p>{liveDescription}</p>
+                  ) : listing.editorial_summary ? (
                     <p>{listing.editorial_summary}</p>
                   ) : (
                     <p>{listing.name} is a local business{listing.category ? ` categorized under ${listing.category}` : ""}{listing.formatted_address ? `, located at ${listing.formatted_address}` : ""}.</p>
                   )}
                 </div>
+
+
 
                 {/* Inline Gallery */}
                 {photos.length > 1 && (
@@ -368,7 +439,11 @@ const ListingPage = () => {
                       className="flex overflow-x-auto gap-4 pb-4 hide-scrollbar w-full"
                     >
                       {photos.slice(1, 10).map((p, i) => (
-                         <div key={i} className="group relative flex-none w-[200px] h-[150px] md:w-[250px] md:h-[180px] rounded-xl overflow-hidden border border-border shadow-soft transition-all duration-500 hover:shadow-[0_0_25px_rgba(0,119,255,0.3)] hover:-translate-y-1 hover:border-brand-blue/50 cursor-pointer">
+                         <div 
+                           key={i} 
+                           onClick={() => openGalleryLightbox(i)}
+                           className="group relative flex-none w-[200px] h-[150px] md:w-[250px] md:h-[180px] rounded-xl overflow-hidden border border-border shadow-soft transition-all duration-500 hover:shadow-[0_0_25px_rgba(0,119,255,0.3)] hover:-translate-y-1 hover:border-brand-blue/50 cursor-pointer"
+                         >
                             <div className="absolute inset-0 bg-gradient-to-t from-brand-blue/30 via-brand-blue/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-10 pointer-events-none" />
                             <img src={photoUrl(p.name, 600)} alt={`${listing.name} ${i+2}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" loading="lazy" />
                          </div>
@@ -478,12 +553,16 @@ const ListingPage = () => {
                     className="flex overflow-x-auto gap-4 hide-scrollbar w-full px-1 pb-4"
                   >
                     {posts.map((post, i) => (
-                      <a 
+                      <div 
                         key={i} 
-                        href={post.callToAction?.url || mapsLink} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="flex-none w-[240px] md:w-[260px] group/post"
+                        className="flex-none w-[240px] md:w-[260px] group/post cursor-pointer"
+                        onClick={() => {
+                          if (post.photoUri) {
+                            openPostsLightbox(i);
+                          } else if (post.callToAction?.url) {
+                            window.open(post.callToAction.url, "_blank", "noopener,noreferrer");
+                          }
+                        }}
                       >
                         <article className="h-full bg-background border border-border shadow-sm rounded-xl overflow-hidden flex flex-col hover:shadow-md transition-shadow">
                           <div className="h-[200px] w-full bg-muted overflow-hidden flex items-center justify-center relative">
@@ -503,13 +582,19 @@ const ListingPage = () => {
                               {post.publishTime && (
                                 <p className="text-[10px] text-muted-foreground font-medium">{post.publishTime}</p>
                               )}
-                              <span className="text-[10px] font-bold text-brand-blue uppercase tracking-wider flex items-center gap-1 opacity-0 group-hover/post:opacity-100 transition-opacity">
+                              <a 
+                                href={post.callToAction?.url || mapsLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-[10px] font-bold text-brand-blue uppercase tracking-wider flex items-center gap-1 opacity-0 group-hover/post:opacity-100 transition-opacity hover:underline"
+                              >
                                 {post.callToAction?.label || "View"} <ExternalLink className="h-3 w-3" />
-                              </span>
+                              </a>
                             </div>
                           </div>
                         </article>
-                      </a>
+                      </div>
                     ))}
                   </div>
 
@@ -593,6 +678,80 @@ const ListingPage = () => {
             </section>
           )}
 
+          {/* Business Features / About */}
+          {((liveServiceOptions && Object.keys(liveServiceOptions).length > 0) || (liveAbout && Array.isArray(liveAbout) && liveAbout.length > 0)) && (
+            <section id="features" className="scroll-mt-24">
+              <h2 className="text-2xl md:text-3xl font-bold mb-8">About the Business</h2>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-10 gap-y-10">
+                {/* Service Options — from service_options flat object */}
+                {liveServiceOptions && Object.keys(liveServiceOptions).filter(k => liveServiceOptions[k] !== false).length > 0 && (
+                  <div className="card-tint-blue rounded-2xl p-5 border border-brand-blue/15 shadow-soft">
+                    <h3 className="text-base font-bold text-foreground mb-4 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-brand-blue flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                      Service options
+                    </h3>
+                    <ul className="space-y-2.5">
+                      {Object.entries(liveServiceOptions).map(([key, value]) => {
+                        if (value === false) return null;
+                        const label = key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+                        return (
+                          <li key={key} className="flex items-center gap-2.5 text-[14px] text-muted-foreground">
+                            <svg className="w-4 h-4 flex-shrink-0 text-brand-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                            <span>{label}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
+                
+                {/* All About sub-sections: Accessibility, Amenities, Crowd, Parking, etc. */}
+                {liveAbout && Array.isArray(liveAbout) && liveAbout.map((section: any, idx: number) => {
+                  const options = section.options || [];
+                  if (options.length === 0) return null;
+                  const sectionLabel = section.id
+                    ? section.id.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())
+                    : "Details";
+
+                  // Icon map for known section types
+                  const iconPath: Record<string, string> = {
+                    accessibility: "M12 2a3 3 0 100 6 3 3 0 000-6zm-1 9v6l-2 4h2l1-2 1 2h2l-2-4v-6h-2z",
+                    service_options: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2",
+                    amenities: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
+                    crowd: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z",
+                    parking: "M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11a2 2 0 012 2v3m0 0h-3a2 2 0 00-2 2v8a2 2 0 002 2h3m0-10v10m0 0h3",
+                    payments: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",
+                    children: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
+                  };
+                  const fallbackIcon = "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z";
+                  const iconD = iconPath[section.id?.toLowerCase()] || fallbackIcon;
+
+                  return (
+                    <div key={idx} className="card-tint-blue rounded-2xl p-5 border border-brand-blue/15 shadow-soft">
+                      <h3 className="text-base font-bold text-foreground mb-4 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-brand-blue flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconD} /></svg>
+                        {sectionLabel}
+                      </h3>
+                      <ul className="space-y-2.5">
+                        {options.map((opt: any, i: number) => (
+                          <li key={i} className={`flex items-center gap-2.5 text-[14px] ${opt.enabled === false ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}>
+                            {opt.enabled === false ? (
+                              <svg className="w-4 h-4 flex-shrink-0 text-muted-foreground/40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            ) : (
+                              <svg className="w-4 h-4 flex-shrink-0 text-brand-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                            )}
+                            <span className={opt.enabled === false ? 'line-through' : ''}>{opt.name}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           {/* Category Tags */}
           {(listing.category || (liveTags && liveTags.length > 0)) && (
             <section id="category" className="scroll-mt-24 pb-4">
@@ -618,6 +777,70 @@ const ListingPage = () => {
       </main>
 
       <SiteFooter />
+
+      {/* Fullscreen Media Modal */}
+      {lightboxState && lightboxState.items[lightboxState.index] && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto"
+          onClick={() => setLightboxState(null)}
+        >
+          <button 
+            className="fixed top-4 right-4 md:top-6 md:right-6 text-white/70 hover:text-white p-2 rounded-full bg-black/50 hover:bg-black/80 transition-all z-[102]"
+            onClick={() => setLightboxState(null)}
+            aria-label="Close modal"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+
+          {/* Prev Button */}
+          {lightboxState.index > 0 && (
+            <button 
+              className="fixed left-2 md:left-6 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-3 rounded-full bg-black/50 hover:bg-black/80 transition-all z-[102]"
+              onClick={(e) => { e.stopPropagation(); setLightboxState(s => s ? { ...s, index: s.index - 1 } : null); }}
+              aria-label="Previous image"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+          )}
+
+          {/* Next Button */}
+          {lightboxState.index < lightboxState.items.length - 1 && (
+            <button 
+              className="fixed right-2 md:right-6 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-3 rounded-full bg-black/50 hover:bg-black/80 transition-all z-[102]"
+              onClick={(e) => { e.stopPropagation(); setLightboxState(s => s ? { ...s, index: s.index + 1 } : null); }}
+              aria-label="Next image"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          )}
+          
+          <div className="min-h-full flex flex-col items-center justify-center p-4 md:p-8 py-12 md:py-16">
+            <div 
+              className="relative w-full max-w-5xl flex flex-col items-center animate-in zoom-in-95 duration-300 my-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-full flex items-center justify-center mb-6 relative">
+                <img 
+                  src={lightboxState.items[lightboxState.index].src} 
+                  alt={lightboxState.items[lightboxState.index].caption || "Media preview"} 
+                  className="max-w-full h-auto max-h-[80vh] object-contain rounded-lg shadow-[0_0_40px_rgba(0,119,255,0.25)] ring-1 ring-white/10" 
+                />
+              </div>
+              
+              {(lightboxState.items[lightboxState.index].caption || lightboxState.items[lightboxState.index].date) && (
+                <div className="bg-background rounded-2xl shadow-[0_8px_30px_rgba(0,119,255,0.15)] w-full max-w-4xl text-left border border-brand-blue/20 relative overflow-hidden text-foreground">
+                  <div className="absolute inset-0 card-tint-blue pointer-events-none" />
+                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-brand-blue to-brand-green opacity-80 z-10" />
+                  <div className="relative z-20 p-6 md:p-8">
+                    {lightboxState.items[lightboxState.index].caption && <p className="text-sm md:text-base leading-relaxed whitespace-pre-wrap">{lightboxState.items[lightboxState.index].caption}</p>}
+                    {lightboxState.items[lightboxState.index].date && <p className="text-xs text-brand-blue mt-4 font-bold uppercase tracking-wider">{lightboxState.items[lightboxState.index].date}</p>}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
