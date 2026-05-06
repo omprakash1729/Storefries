@@ -550,7 +550,7 @@ const ListingPage = () => {
 
               <div className="columns-1 md:columns-2 lg:columns-3 gap-6 space-y-6">
                 {reviews.map((r, i) => (
-                  <article key={i} className="group relative break-inside-avoid rounded-3xl bg-background border border-border shadow-soft p-6 md:p-8 hover:shadow-xl hover:-translate-y-1 transition-all duration-400 overflow-hidden">
+                  <article key={i} className="group relative break-inside-avoid rounded-3xl card-tint-blue border border-border shadow-soft p-6 md:p-8 hover:shadow-xl hover:-translate-y-1 transition-all duration-400 overflow-hidden">
                     {/* Decorative Quote Watermark */}
                     <span className="absolute -top-4 right-4 text-[100px] leading-none text-brand-blue/[0.03] font-serif select-none pointer-events-none transition-transform duration-500 group-hover:-translate-y-2 group-hover:text-brand-blue/[0.06]">
                       ”
