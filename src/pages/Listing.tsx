@@ -117,11 +117,21 @@ const ListingPage = () => {
       if (!listing?.name) return;
       try {
         const apiKey = import.meta.env.VITE_SERPAPI_KEY;
-        if (!apiKey) return;
+        if (!apiKey) {
+          console.error("VITE_SERPAPI_KEY is missing in this environment!");
+          return;
+        }
+        console.log("Fetching live data for:", listing.name);
 
         const query = encodeURIComponent(`${listing.name} ${listing.formatted_address || ""}`);
         const mapsUrl = `/api/serpapi/search.json?engine=google_maps&q=${query}&api_key=${apiKey}`;
         const mapsRes = await fetch(mapsUrl);
+        
+        if (!mapsRes.ok) {
+          console.error("Maps API error:", mapsRes.status, await mapsRes.text());
+          return;
+        }
+        
         const mapsJson = await mapsRes.json();
         
         const placeResult = mapsJson.local_results?.[0] || mapsJson.place_results;
