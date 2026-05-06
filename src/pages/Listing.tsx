@@ -124,7 +124,7 @@ const ListingPage = () => {
         console.log("Fetching live data for:", listing.name);
 
         const query = encodeURIComponent(`${listing.name} ${listing.formatted_address || ""}`);
-        const mapsUrl = `/api/serpapi/search.json?engine=google_maps&q=${query}&api_key=${apiKey}`;
+        const mapsUrl = `/api/serpapiProxy?engine=google_maps&q=${query}&api_key=${apiKey}`;
         const mapsRes = await fetch(mapsUrl);
         
         if (!mapsRes.ok) {
@@ -146,7 +146,7 @@ const ListingPage = () => {
 
         // Only fetch posts if they are missing from the DB
         if (!listing.posts || listing.posts.length === 0) {
-          const postsUrl = `/api/serpapi/search.json?engine=google_maps_posts&data_id=${dataId}&api_key=${apiKey}`;
+          const postsUrl = `/api/serpapiProxy?engine=google_maps_posts&data_id=${dataId}&api_key=${apiKey}`;
           const postsRes = await fetch(postsUrl);
           const postsJson = await postsRes.json();
           

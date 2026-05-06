@@ -11,11 +11,11 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
     proxy: {
-      "/api/serpapi": {
-        target: "https://serpapi.com",
+      '/api/serpapiProxy': {
+        target: 'https://serpapi.com',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/serpapi/, ""),
-      },
+        rewrite: (path) => path.replace(/^\/api\/serpapiProxy/, '/search.json')
+      }
     },
   },
   plugins: [react()],
