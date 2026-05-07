@@ -5,7 +5,7 @@ import { Seo } from "@/components/Seo";
 import { SiteHeader, SiteFooter } from "@/components/SiteChrome";
 import { Button } from "@/components/ui/button";
 import { photoUrl } from "@/lib/photo";
-import { Star, MapPin, Phone, Globe, Clock, Tag, Navigation, MessageCircle, ExternalLink } from "lucide-react";
+import { Star, MapPin, Phone, Globe, Clock, Tag, Navigation, MessageCircle, ExternalLink, Heart, Send, Bookmark } from "lucide-react";
 
 interface Listing {
   id: string;
@@ -51,7 +51,17 @@ const ListingPage = () => {
   const [liveAbout, setLiveAbout] = useState<any[] | null>(null);
   const [liveServiceOptions, setLiveServiceOptions] = useState<any | null>(null);
   const [liveDescription, setLiveDescription] = useState<string | null>(null);
-  const [lightboxState, setLightboxState] = useState<{ index: number; items: Array<{ src: string; caption?: string; date?: string }> } | null>(null);
+  const [lightboxState, setLightboxState] = useState<{ 
+    index: number; 
+    items: Array<{ 
+      src: string; 
+      caption?: string; 
+      date?: string; 
+      isPost?: boolean; 
+      callToAction?: { url: string; label: string } 
+    }> 
+  } | null>(null);
+  const [likedPosts, setLikedPosts] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!slug) return;
@@ -304,7 +314,9 @@ const ListingPage = () => {
     const items = posts.filter(p => p.photoUri).map(p => ({
       src: p.photoUri!,
       caption: p.content || p.title,
-      date: p.publishTime
+      date: p.publishTime,
+      isPost: true,
+      callToAction: p.callToAction
     }));
     const clickedSrc = posts[postIndex].photoUri;
     const itemsIndex = items.findIndex(i => i.src === clickedSrc);
@@ -814,28 +826,128 @@ const ListingPage = () => {
             </button>
           )}
           
-          <div className="min-h-full flex flex-col items-center justify-center p-4 md:p-8 py-12 md:py-16">
+          <div className="min-h-full flex flex-col items-center justify-center p-2 md:p-8 py-12 md:py-16">
             <div 
               className="relative w-full max-w-5xl flex flex-col items-center animate-in zoom-in-95 duration-300 my-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="w-full flex items-center justify-center mb-6 relative">
-                <img 
-                  src={lightboxState.items[lightboxState.index].src} 
-                  alt={lightboxState.items[lightboxState.index].caption || "Media preview"} 
-                  className="max-w-full h-auto max-h-[80vh] object-contain rounded-lg shadow-[0_0_40px_rgba(0,119,255,0.25)] ring-1 ring-white/10" 
-                />
-              </div>
-              
-              {(lightboxState.items[lightboxState.index].caption || lightboxState.items[lightboxState.index].date) && (
-                <div className="bg-background rounded-2xl shadow-[0_8px_30px_rgba(0,119,255,0.15)] w-full max-w-4xl text-left border border-brand-blue/20 relative overflow-hidden text-foreground">
-                  <div className="absolute inset-0 card-tint-blue pointer-events-none" />
-                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-brand-blue to-brand-green opacity-80 z-10" />
-                  <div className="relative z-20 p-6 md:p-8">
-                    {lightboxState.items[lightboxState.index].caption && <p className="text-sm md:text-base leading-relaxed whitespace-pre-wrap">{lightboxState.items[lightboxState.index].caption}</p>}
-                    {lightboxState.items[lightboxState.index].date && <p className="text-xs text-brand-blue mt-4 font-bold uppercase tracking-wider">{lightboxState.items[lightboxState.index].date}</p>}
+              {lightboxState.items[lightboxState.index].isPost ? (
+                /* Combined Instagram Style Post Layout */
+                <div className="bg-background rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] w-full max-w-4xl border border-border/50 overflow-hidden text-foreground grid grid-cols-1 md:grid-cols-12 md:max-h-[85vh]">
+                  {/* Left Column: Image Area */}
+                  <div className="md:col-span-7 bg-neutral-950 flex items-center justify-center p-2 relative min-h-[300px] md:min-h-[450px]">
+                    <img 
+                      src={lightboxState.items[lightboxState.index].src} 
+                      alt={lightboxState.items[lightboxState.index].caption || "Post preview"} 
+                      className="max-w-full h-auto max-h-[50vh] md:max-h-[80vh] object-contain rounded-md" 
+                    />
+                  </div>
+
+                  {/* Right Column: Premium Side Feed Panel */}
+                  <div className="md:col-span-5 flex flex-col h-full bg-background md:max-h-[85vh]">
+                    {/* Header: Author Info & Relocated Date */}
+                    <div className="p-4 flex items-center gap-3 border-b border-border/60 bg-muted/20">
+                      {/* Avatar */}
+                      <div className="h-10 w-10 rounded-full overflow-hidden border border-border/60 flex items-center justify-center bg-brand-blue/10 text-brand-blue font-bold text-sm flex-shrink-0">
+                        {heroPhoto ? (
+                          <img 
+                            src={photoUrl(heroPhoto.name, 100)} 
+                            alt={listing.name} 
+                            className="w-full h-full object-cover" 
+                          />
+                        ) : (
+                          listing.name.slice(0, 2).toUpperCase()
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-foreground truncate">{listing.name}</p>
+                        <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1 flex-wrap">
+                          <MapPin className="h-3 w-3 text-brand-blue flex-shrink-0" />
+                          <span>
+                            {listing.formatted_address ? (
+                              listing.formatted_address.split(',')[1]?.trim() || listing.formatted_address.split(',')[0]?.trim()
+                            ) : 'Verified Location'}
+                          </span>
+                          {lightboxState.items[lightboxState.index].date && (
+                            <>
+                              <span className="text-muted-foreground/50 mx-0.5">•</span>
+                              <span className="text-brand-blue font-semibold">{lightboxState.items[lightboxState.index].date}</span>
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Scrollable Caption Body */}
+                    <div className="p-4 flex-1 overflow-y-auto max-h-[45vh] md:max-h-[55vh] custom-scrollbar">
+                      <div className="flex items-start gap-3">
+                        {/* Caption Avatar */}
+                        <div className="h-7 w-7 rounded-full overflow-hidden border border-border/60 flex items-center justify-center bg-brand-blue/10 text-brand-blue font-bold text-[10px] flex-shrink-0 mt-0.5">
+                          {heroPhoto ? (
+                            <img 
+                              src={photoUrl(heroPhoto.name, 100)} 
+                              alt={listing.name} 
+                              className="w-full h-full object-cover" 
+                            />
+                          ) : (
+                            listing.name.slice(0, 2).toUpperCase()
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="font-semibold text-sm text-foreground mr-2">{listing.name}</span>
+                          <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap inline">
+                            {lightboxState.items[lightboxState.index].caption}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer Area with CTA Button */}
+                    <div className="p-4 bg-muted/10 border-t border-border/60 mt-auto flex flex-col gap-3">
+                      {lightboxState.items[lightboxState.index].callToAction?.url ? (
+                        <a 
+                          href={lightboxState.items[lightboxState.index].callToAction?.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full py-2.5 px-4 bg-gradient-to-r from-brand-blue to-brand-green text-white font-bold rounded-xl text-center text-xs tracking-wide shadow-md hover:shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all block"
+                        >
+                          {lightboxState.items[lightboxState.index].callToAction?.label || "Learn more"}
+                        </a>
+                      ) : (
+                        <a 
+                          href={mapsLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full py-2.5 px-4 bg-secondary text-secondary-foreground hover:bg-secondary/80 font-bold rounded-xl text-center text-xs tracking-wide transition-colors block"
+                        >
+                          View on Google Maps
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
+              ) : (
+                /* Original / Standard Media Preview Layout for Non-Posts */
+                <>
+                  <div className="w-full flex items-center justify-center mb-6 relative">
+                    <img 
+                      src={lightboxState.items[lightboxState.index].src} 
+                      alt={lightboxState.items[lightboxState.index].caption || "Media preview"} 
+                      className="max-w-full h-auto max-h-[80vh] object-contain rounded-lg shadow-[0_0_40px_rgba(0,119,255,0.25)] ring-1 ring-white/10" 
+                    />
+                  </div>
+                  
+                  {(lightboxState.items[lightboxState.index].caption || lightboxState.items[lightboxState.index].date) && (
+                    <div className="bg-background rounded-2xl shadow-[0_8px_30px_rgba(0,119,255,0.15)] w-full max-w-4xl text-left border border-brand-blue/20 relative overflow-hidden text-foreground">
+                      <div className="absolute inset-0 card-tint-blue pointer-events-none" />
+                      <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-brand-blue to-brand-green opacity-80 z-10" />
+                      <div className="relative z-20 p-6 md:p-8">
+                        {lightboxState.items[lightboxState.index].caption && <p className="text-sm md:text-base leading-relaxed whitespace-pre-wrap">{lightboxState.items[lightboxState.index].caption}</p>}
+                        {lightboxState.items[lightboxState.index].date && <p className="text-xs text-brand-blue mt-4 font-bold uppercase tracking-wider">{lightboxState.items[lightboxState.index].date}</p>}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
