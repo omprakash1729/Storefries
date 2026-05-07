@@ -62,6 +62,7 @@ const ListingPage = () => {
     }> 
   } | null>(null);
   const [likedPosts, setLikedPosts] = useState<Record<string, boolean>>({});
+  const [showFullAddress, setShowFullAddress] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
@@ -328,7 +329,7 @@ const ListingPage = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Seo
-        title={`${listing.name}${listing.formatted_address ? " — " + listing.formatted_address.split(",")[1]?.trim() : ""} | Storefries`}
+        title={`${listing.name}${listing.formatted_address ? " — " + (listing.formatted_address.split(',').slice(-3, -2)[0]?.trim() || listing.formatted_address.split(',')[1]?.trim()) : ""} | Storefries`}
         description={
           listing.editorial_summary ??
           `${listing.name}${listing.category ? ` (${listing.category})` : ""}${listing.formatted_address ? " located at " + listing.formatted_address : ""}.`
@@ -373,9 +374,17 @@ const ListingPage = () => {
                   </div>
                 )}
                 {listing.formatted_address && (
-                  <address className="not-italic flex items-center gap-1.5 text-foreground/90 bg-background/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-border/50">
+                  <address 
+                    onClick={() => setShowFullAddress(!showFullAddress)}
+                    className="not-italic flex items-center gap-1.5 text-foreground/90 bg-background/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-border/50 cursor-pointer hover:bg-background/80 transition-all max-w-full"
+                  >
                     <MapPin className="h-4 w-4 flex-shrink-0 text-brand-blue" />
-                    <span className="truncate max-w-[200px] sm:max-w-md">{listing.formatted_address}</span>
+                    <span className={`${showFullAddress ? "whitespace-normal break-words" : "truncate max-w-[200px] sm:max-w-md md:max-w-xl"} text-xs md:text-sm`}>
+                      {listing.formatted_address}
+                    </span>
+                    <span className="text-[10px] text-brand-blue font-bold ml-1 flex-shrink-0">
+                      {showFullAddress ? "Show Less" : "See More"}
+                    </span>
                   </address>
                 )}
               </div>
@@ -865,7 +874,7 @@ const ListingPage = () => {
                           <MapPin className="h-3 w-3 text-brand-blue flex-shrink-0" />
                           <span>
                             {listing.formatted_address ? (
-                              listing.formatted_address.split(',')[1]?.trim() || listing.formatted_address.split(',')[0]?.trim()
+                              listing.formatted_address.split(',').slice(-3, -2)[0]?.trim() || listing.formatted_address.split(',')[0]?.trim()
                             ) : 'Verified Location'}
                           </span>
                           {lightboxState.items[lightboxState.index].date && (
