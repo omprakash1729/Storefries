@@ -939,7 +939,7 @@ const ListingPage = () => {
                 /* Combined Instagram Style Post Layout */
                 <div className="bg-background rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] w-full max-w-4xl border border-border/50 overflow-hidden text-foreground grid grid-cols-1 md:grid-cols-12 md:max-h-[85vh]">
                   {/* Left Column: Image Area */}
-                  <div className="md:col-span-7 bg-neutral-950 flex items-center justify-center p-2 relative min-h-[300px] md:min-h-[450px]">
+                  <div className="md:col-span-7 bg-neutral-50 border-r border-border/40 flex items-center justify-center p-2 relative min-h-[300px] md:min-h-[450px]">
                     <img 
                       src={lightboxState.items[lightboxState.index].src} 
                       alt={lightboxState.items[lightboxState.index].caption || "Post preview"} 
