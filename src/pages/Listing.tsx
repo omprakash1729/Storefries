@@ -38,6 +38,21 @@ const Stars = ({ value }: { value: number }) => (
   </div>
 );
 
+const getCityOrBranch = (address: string | null): string => {
+  if (!address) return "Verified Location";
+  const parts = address.split(',').map(p => p.trim());
+  if (address.toLowerCase().includes("sholinganallur")) {
+    return "Sholinganallur";
+  }
+  if (address.toLowerCase().includes("tirunelveli")) {
+    return "Tirunelveli";
+  }
+  if (parts.length >= 3) {
+    return parts[parts.length - 3];
+  }
+  return parts[1] || parts[0] || "Verified Location";
+};
+
 const ListingPage = () => {
   const { slug } = useParams();
   const [listing, setListing] = useState<Listing | null>(null);
@@ -403,7 +418,7 @@ const ListingPage = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Seo
-        title={`${listing.name}${listing.formatted_address ? " — " + (listing.formatted_address.split(',').slice(-3, -2)[0]?.trim() || listing.formatted_address.split(',')[1]?.trim()) : ""} | Storefries`}
+        title={`${listing.name}${listing.formatted_address ? " — " + getCityOrBranch(listing.formatted_address) : ""} | Storefries`}
         description={
           listing.editorial_summary ??
           `${listing.name}${listing.category ? ` (${listing.category})` : ""}${listing.formatted_address ? " located at " + listing.formatted_address : ""}.`
@@ -653,7 +668,7 @@ const ListingPage = () => {
                 </h2>
                 {listing.formatted_address && (
                   <p className="text-sm font-medium text-foreground/80 mb-8">
-                    in {listing.formatted_address.split(',').slice(-3, -2)[0]?.trim() || listing.formatted_address.split(',')[0]}
+                    in {getCityOrBranch(listing.formatted_address)}
                   </p>
                 )}
                 
@@ -972,9 +987,7 @@ const ListingPage = () => {
                         <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1 flex-wrap">
                           <MapPin className="h-3 w-3 text-brand-blue flex-shrink-0" />
                           <span>
-                            {listing.formatted_address ? (
-                              listing.formatted_address.split(',').slice(-3, -2)[0]?.trim() || listing.formatted_address.split(',')[0]?.trim()
-                            ) : 'Verified Location'}
+                            {getCityOrBranch(listing.formatted_address)}
                           </span>
                           {lightboxState.items[lightboxState.index].date && (
                             <>
