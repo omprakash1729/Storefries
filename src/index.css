@@ -116,3 +116,11 @@
     color: #ffffff;
   }
 }
+
+/* Hide Lovable development badges, widgets or bars */
+[class*="lovable"], [id*="lovable"], .lovable-badge, #lovable-badge, [id*="gptengineer"], [class*="gptengineer"] {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
