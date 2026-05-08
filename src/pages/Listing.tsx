@@ -264,25 +264,6 @@ const ListingPage = () => {
           scanForSocialUrls(listing.raw);
         }
         
-        // 4. Premium mock fallbacks for Moon Dental and Tulips Hospital
-        if (profiles.length === 0) {
-          if (listing.name.toLowerCase().includes("moon dental")) {
-            profiles.push(
-              { name: "Facebook", url: "https://www.facebook.com/moondentaltirunelveli/" },
-              { name: "Instagram", url: "https://www.instagram.com/moondentalclinic/" }
-            );
-          } else if (listing.name.toLowerCase().includes("tulips")) {
-            profiles.push(
-              { name: "Facebook", url: "https://www.facebook.com/tulipshospitalchennai/" },
-              { name: "Instagram", url: "https://www.instagram.com/tulips_hospital/" }
-            );
-          } else if (listing.name.toLowerCase().includes("supreme")) {
-            profiles.push(
-              { name: "Facebook", url: "https://www.facebook.com/supremespecialityhospital/" }
-            );
-          }
-        }
-        
         setSocialProfiles(profiles);
 
         const dataId = placeResult?.data_id;
