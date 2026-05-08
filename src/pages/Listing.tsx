@@ -66,10 +66,13 @@ const ListingPage = () => {
 
   useEffect(() => {
     if (!slug) return;
+    const dbSlug = slug === "tulips-multispeciality-hospital-sholinganallur"
+      ? "tulips-multispeciality-hospital-chennai"
+      : slug;
     supabase
       .from("listings")
       .select("*")
-      .eq("slug", slug)
+      .eq("slug", dbSlug)
       .maybeSingle()
       .then(({ data }) => {
         setListing(data as Listing | null);

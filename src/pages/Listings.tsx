@@ -217,6 +217,9 @@ const Listings = () => {
             {(groupedListings[selectedBrand] || []).map((r) => {
               const photos = (r.photos ?? []) as Array<{ name: string }>;
               const heroPhoto = photos[0];
+              const displaySlug = r.slug === "tulips-multispeciality-hospital-chennai"
+                ? "tulips-multispeciality-hospital-sholinganallur"
+                : r.slug;
               
               // Extract best possible category from raw data
               let displayCategory = r.category;
@@ -230,8 +233,8 @@ const Listings = () => {
               
               return (
                 <Link
-                  key={r.slug}
-                  to={`/l/${r.slug}`}
+                  key={displaySlug}
+                  to={`/l/${displaySlug}`}
                   className="group flex flex-col rounded-2xl border border-border bg-card shadow-soft hover:shadow-card hover:-translate-y-1 transition-all duration-300 overflow-hidden"
                 >
                   <div className="relative h-48 w-full bg-muted overflow-hidden">
