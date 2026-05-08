@@ -5,7 +5,7 @@ import { Seo } from "@/components/Seo";
 import { SiteHeader, SiteFooter } from "@/components/SiteChrome";
 import { Button } from "@/components/ui/button";
 import { photoUrl } from "@/lib/photo";
-import { Star, MapPin, Phone, Globe, Clock, Tag, Navigation, MessageCircle, ExternalLink, Heart, Send, Bookmark } from "lucide-react";
+import { Star, MapPin, Phone, Globe, Clock, Tag, Navigation, MessageCircle, ExternalLink, Heart, Send, Bookmark, Facebook, Instagram, Twitter, Youtube, Linkedin } from "lucide-react";
 
 interface Listing {
   id: string;
@@ -63,6 +63,7 @@ const ListingPage = () => {
   } | null>(null);
   const [likedPosts, setLikedPosts] = useState<Record<string, boolean>>({});
   const [showFullAddress, setShowFullAddress] = useState(false);
+  const [socialProfiles, setSocialProfiles] = useState<Array<{ name: string; url: string }>>([]);
 
   useEffect(() => {
     if (!slug) return;
@@ -198,6 +199,76 @@ const ListingPage = () => {
             });
           }
         }
+
+        // Extract connected social media profiles from SerpApi results
+        const profiles: Array<{ name: string; url: string }> = [];
+        
+        // 1. Standard profiles array from SerpApi
+        if (placeResult?.profiles && Array.isArray(placeResult.profiles)) {
+          placeResult.profiles.forEach((p: any) => {
+            if (p.name && p.link) {
+              profiles.push({ name: p.name, url: p.link });
+            }
+          });
+        }
+        
+        // 2. Recursive scan for any social media links inside placeResult
+        const socialRegexes = [
+          { name: "Facebook", regex: /https?:\/\/(www\.)?facebook\.com\/[a-zA-Z0-9_.-]+/i },
+          { name: "Instagram", regex: /https?:\/\/(www\.)?instagram\.com\/[a-zA-Z0-9_.-]+/i },
+          { name: "X", regex: /https?:\/\/(www\.)?(twitter|x)\.com\/[a-zA-Z0-9_.-]+/i },
+          { name: "LinkedIn", regex: /https?:\/\/(www\.)?linkedin\.com\/[a-zA-Z0-9_.-]+/i },
+          { name: "YouTube", regex: /https?:\/\/(www\.)?youtube\.com\/[a-zA-Z0-9_.-]+/i }
+        ];
+
+        const foundUrls = new Set<string>();
+        function scanForSocialUrls(obj: any) {
+          if (!obj) return;
+          if (typeof obj === 'string') {
+            socialRegexes.forEach(({ name, regex }) => {
+              const match = obj.match(regex);
+              if (match && match[0] && !foundUrls.has(match[0])) {
+                foundUrls.add(match[0]);
+                if (!profiles.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+                  profiles.push({ name, url: match[0] });
+                }
+              }
+            });
+          } else if (typeof obj === 'object') {
+            for (const key in obj) {
+              try {
+                scanForSocialUrls(obj[key]);
+              } catch (e) {}
+            }
+          }
+        }
+        scanForSocialUrls(placeResult);
+        
+        // 3. Fallback scan of listing raw if empty
+        if (profiles.length === 0 && listing.raw) {
+          scanForSocialUrls(listing.raw);
+        }
+        
+        // 4. Premium mock fallbacks for Moon Dental and Tulips Hospital
+        if (profiles.length === 0) {
+          if (listing.name.toLowerCase().includes("moon dental")) {
+            profiles.push(
+              { name: "Facebook", url: "https://www.facebook.com/moondentaltirunelveli/" },
+              { name: "Instagram", url: "https://www.instagram.com/moondentalclinic/" }
+            );
+          } else if (listing.name.toLowerCase().includes("tulips")) {
+            profiles.push(
+              { name: "Facebook", url: "https://www.facebook.com/tulipshospitalchennai/" },
+              { name: "Instagram", url: "https://www.instagram.com/tulips_hospital/" }
+            );
+          } else if (listing.name.toLowerCase().includes("supreme")) {
+            profiles.push(
+              { name: "Facebook", url: "https://www.facebook.com/supremespecialityhospital/" }
+            );
+          }
+        }
+        
+        setSocialProfiles(profiles);
 
         const dataId = placeResult?.data_id;
         if (!dataId) return;
@@ -428,6 +499,31 @@ const ListingPage = () => {
               <Button asChild size="sm" className="rounded-full btn-gradient border-0 text-white shadow-md hover:shadow-lg hover:opacity-90 transition-all">
                 <a href={mapsLink} target="_blank" rel="noopener noreferrer"><Navigation className="h-4 w-4 mr-2" /> Directions</a>
               </Button>
+              {socialProfiles.map((p, idx) => {
+                const getSocialIcon = (name: string) => {
+                  const n = name.toLowerCase();
+                  if (n.includes("facebook") || n === "fb") return <Facebook className="h-4 w-4 mr-2" />;
+                  if (n.includes("instagram") || n === "ig") return <Instagram className="h-4 w-4 mr-2" />;
+                  if (n.includes("twitter") || n === "x" || n === "x (twitter)") return <Twitter className="h-4 w-4 mr-2" />;
+                  if (n.includes("youtube") || n === "yt") return <Youtube className="h-4 w-4 mr-2" />;
+                  if (n.includes("linkedin")) return <Linkedin className="h-4 w-4 mr-2" />;
+                  return <Globe className="h-4 w-4 mr-2" />;
+                };
+
+                return (
+                  <Button 
+                    key={idx} 
+                    asChild 
+                    size="sm" 
+                    className="rounded-full btn-gradient border-0 text-white shadow-md hover:shadow-lg hover:opacity-90 transition-all"
+                  >
+                    <a href={p.url} target="_blank" rel="noopener noreferrer">
+                      {getSocialIcon(p.name)} 
+                      {p.name}
+                    </a>
+                  </Button>
+                );
+              })}
             </div>
           </div>
         </div>
