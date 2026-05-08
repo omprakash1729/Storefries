@@ -21,8 +21,11 @@ const Index = () => {
     }
     setLoading(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+
       const { data, error } = await supabase.functions.invoke("generate-listing", {
-        body: { url: url.trim() },
+        body: { url: url.trim(), userId: userId || null },
       });
       if (error) {
         // Supabase edge function errors sometimes hide the real message in context
