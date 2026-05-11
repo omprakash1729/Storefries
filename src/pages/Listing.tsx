@@ -571,32 +571,49 @@ const ListingPage = () => {
                   <a href={whatsappLink} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-4 w-4 mr-2" /> WhatsApp</a>
                 </Button>
               )}
-              {socialProfiles.map((p, idx) => {
-                const getSocialIcon = (name: string) => {
-                  const n = name.toLowerCase();
-                  if (n.includes("facebook") || n === "fb") return <Facebook className="h-4 w-4 mr-2" />;
-                  if (n.includes("instagram") || n === "ig") return <Instagram className="h-4 w-4 mr-2" />;
-                  if (n.includes("twitter") || n === "x" || n === "x (twitter)") return <Twitter className="h-4 w-4 mr-2" />;
-                  if (n.includes("youtube") || n === "yt") return <Youtube className="h-4 w-4 mr-2" />;
-                  if (n.includes("linkedin")) return <Linkedin className="h-4 w-4 mr-2" />;
-                  if (n.includes("pinterest")) return <svg className="h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line><circle cx="12" cy="12" r="10"></circle></svg>;
-                  return <Globe className="h-4 w-4 mr-2" />;
-                };
+              {(() => {
+                // Unique social profiles by platform name to avoid duplicates
+                const uniqueProfiles = Array.from(new Map(
+                  socialProfiles.map(p => {
+                    let normalizedKey = p.name.toLowerCase();
+                    if (normalizedKey.includes("facebook")) normalizedKey = "facebook";
+                    if (normalizedKey.includes("instagram")) normalizedKey = "instagram";
+                    if (normalizedKey.includes("youtube")) normalizedKey = "youtube";
+                    if (normalizedKey.includes("linkedin")) normalizedKey = "linkedin";
+                    if (normalizedKey.includes("twitter") || normalizedKey === "x") normalizedKey = "x";
+                    return [normalizedKey, p];
+                  })
+                ).values());
 
-                return (
-                  <Button 
-                    key={idx} 
-                    asChild 
-                    size="sm" 
-                    className="rounded-full bg-secondary hover:bg-muted text-foreground border border-border/50 shadow-sm hover:shadow-md transition-all font-medium"
-                  >
-                    <a href={p.url} target="_blank" rel="noopener noreferrer">
-                      {getSocialIcon(p.name)} 
-                      {p.name}
-                    </a>
-                  </Button>
-                );
-              })}
+                return uniqueProfiles.map((p, idx) => {
+                  const getSocialConfig = (name: string) => {
+                    const n = name.toLowerCase();
+                    if (n.includes("facebook") || n === "fb") return { icon: <Facebook className="h-4 w-4" />, color: "bg-[#1877F2] hover:bg-[#166FE5]", label: "Facebook" };
+                    if (n.includes("instagram") || n === "ig") return { icon: <Instagram className="h-4 w-4" />, color: "bg-[#E4405F] hover:bg-[#D62976]", label: "Instagram" };
+                    if (n.includes("twitter") || n === "x" || n === "x (twitter)") return { icon: <Twitter className="h-4 w-4" />, color: "bg-black hover:bg-gray-900", label: "X" };
+                    if (n.includes("youtube") || n === "yt") return { icon: <Youtube className="h-4 w-4" />, color: "bg-[#FF0000] hover:bg-[#CC0000]", label: "YouTube" };
+                    if (n.includes("linkedin")) return { icon: <Linkedin className="h-4 w-4" />, color: "bg-[#0A66C2] hover:bg-[#004182]", label: "LinkedIn" };
+                    if (n.includes("pinterest")) return { icon: <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line><circle cx="12" cy="12" r="10"></circle></svg>, color: "bg-[#BD081C] hover:bg-[#AD081B]", label: "Pinterest" };
+                    return { icon: <Globe className="h-4 w-4" />, color: "bg-slate-500 hover:bg-slate-600", label: "Website" };
+                  };
+
+                  const config = getSocialConfig(p.name);
+
+                  return (
+                    <Button 
+                      key={idx} 
+                      asChild 
+                      size="icon" 
+                      className={`h-9 w-9 rounded-full text-white border-0 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 ${config.color}`}
+                      title={config.label}
+                    >
+                      <a href={p.url} target="_blank" rel="noopener noreferrer">
+                        {config.icon}
+                      </a>
+                    </Button>
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>
