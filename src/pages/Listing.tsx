@@ -66,6 +66,7 @@ const ListingPage = () => {
   const [liveAbout, setLiveAbout] = useState<any[] | null>(null);
   const [liveServiceOptions, setLiveServiceOptions] = useState<any | null>(null);
   const [liveDescription, setLiveDescription] = useState<string | null>(null);
+  const hasFetchedRef = useRef(false);
   const [lightboxState, setLightboxState] = useState<{ 
     index: number; 
     items: Array<{ 
@@ -157,9 +158,10 @@ const ListingPage = () => {
   }, [isHoveringPosts, listing, livePosts]);
 
   useEffect(() => {
-    // Dynamically fetch tags and posts from SerpApi if the database doesn't have them yet
+    // Dynamically fetch tags, social profiles, and posts from SerpApi if not fully populated
     const fetchLiveData = async () => {
-      if (!listing?.name) return;
+      if (!listing?.name || hasFetchedRef.current) return;
+      hasFetchedRef.current = true;
       try {
         const apiKey = import.meta.env.VITE_SERPAPI_KEY;
         if (!apiKey) {
@@ -168,19 +170,76 @@ const ListingPage = () => {
         }
         console.log("Fetching live data for:", listing.name);
 
-        const query = encodeURIComponent(`${listing.name} ${listing.formatted_address || ""}`);
-        const mapsUrl = `/api/serpapiProxy?engine=google_maps&q=${query}&api_key=${apiKey}`;
-        const mapsRes = await fetch(mapsUrl);
-        
-        if (!mapsRes.ok) {
-          console.error("Maps API error:", mapsRes.status, await mapsRes.text());
-          return;
+        // Extract the structured locality/city from raw data for a laser-focused search query
+        // Google Knowledge Graphs pop reliably for "Name City", but fail for long exact addresses.
+        let city = "";
+        if (listing.raw?.addressComponents && Array.isArray(listing.raw.addressComponents)) {
+          const comp = listing.raw.addressComponents.find((c: any) => 
+            c.types?.includes("locality") || c.types?.includes("sublocality_level_1") || c.types?.includes("sublocality")
+          );
+          if (comp) city = comp.longText || comp.shortText;
         }
         
-        const mapsJson = await mapsRes.json();
+        // Fallback extraction if raw components are missing
+        if (!city && listing.formatted_address) {
+          const parts = listing.formatted_address.split(',').map((p: any) => p.trim());
+          if (parts.length >= 3) {
+            city = parts[parts.length - 3]; // Standard layout yields city here
+          } else if (parts.length > 1) {
+            city = parts[1];
+          }
+        }
         
-        const placeResult = mapsJson.local_results?.[0] || mapsJson.place_results;
+        const finalSearchStr = city ? `${listing.name} ${city}` : listing.name;
+        console.log("[SERP] Optimized Search Query Created:", finalSearchStr);
+
+        const query = encodeURIComponent(finalSearchStr);
+        const mapsUrl = `/api/serpapiProxy?engine=google_maps&q=${query}&api_key=${apiKey}`;
+        const googleUrl = `/api/serpapiProxy?engine=google&q=${query}&api_key=${apiKey}`;
         
+        console.log("[SERP] Initiating Sequential Discovery Fetch...");
+        
+        // Fetch Sequentially to strictly obey SerpApi's serial concurrency limits
+        let mapsJson: any = null;
+        try {
+          console.log("[SERP] Fetching Google Maps Data...");
+          const mapsRes = await fetch(mapsUrl);
+          if (mapsRes.ok) {
+            mapsJson = await mapsRes.json();
+            console.log("[SERP] Maps Success:", !!mapsJson);
+          } else {
+            console.warn("[SERP] Maps fetch non-ok:", mapsRes.status);
+          }
+        } catch (e) {
+          console.error("[SERP] Maps fetch failed:", e);
+        }
+
+        let googleJson: any = null;
+        try {
+          console.log("[SERP] Fetching Organic Search Profiles...");
+          const googleRes = await fetch(googleUrl);
+          if (googleRes.ok) {
+            googleJson = await googleRes.json();
+            console.log("[SERP] Organic Success:", !!googleJson);
+          } else {
+            console.warn("[SERP] Organic fetch non-ok:", googleRes.status);
+          }
+        } catch (e) {
+          console.error("[SERP] Organic fetch failed:", e);
+        }
+        
+        const placeResult = mapsJson?.local_results?.[0] || mapsJson?.place_results;
+        const knowledgeGraph = googleJson?.knowledge_graph;
+        
+        console.log("[SERP] Knowledge Graph Detected:", !!knowledgeGraph);
+        console.log("[SERP] Discovered Profiles Found:", knowledgeGraph?.profiles?.length || 0);
+
+        // Augment listing with missing phone from knowledge graph if found
+        if (!listing.phone && knowledgeGraph?.phone) {
+          console.log("[SERP] Supplementing phone number from Knowledge Graph:", knowledgeGraph.phone);
+          setListing(prev => prev ? { ...prev, phone: knowledgeGraph.phone } : null);
+        }
+
         // Extract subcategories / tags
         if (placeResult?.type && Array.isArray(placeResult.type)) {
           setLiveTags(placeResult.type);
@@ -195,7 +254,6 @@ const ListingPage = () => {
         }
 
         // Parse the extensions array: [{service_options: ["Onsite services"]}, {amenities: ["Restroom"]}, ...]
-        // Convert to the same format as liveAbout: [{id, options: [{name, enabled}]}]
         if (placeResult?.extensions && Array.isArray(placeResult.extensions)) {
           const normalized = placeResult.extensions.map((ext: Record<string, string[]>) => {
             const [id, values] = Object.entries(ext)[0] || [];
@@ -206,7 +264,6 @@ const ListingPage = () => {
             };
           }).filter(Boolean);
           if (normalized.length > 0) {
-            // Merge with existing liveAbout (avoid duplicates by id)
             setLiveAbout(prev => {
               const prevIds = new Set((prev || []).map((s: any) => s.id));
               const newSections = normalized.filter((s: any) => !prevIds.has(s.id));
@@ -215,19 +272,36 @@ const ListingPage = () => {
           }
         }
 
-        // Extract connected social media profiles from SerpApi results
+        // Extract connected social media profiles from ALL SerpApi result sources
         const profiles: Array<{ name: string; url: string }> = [];
         
-        // 1. Standard profiles array from SerpApi
+        // Helper to safely add discovered profiles uniquely
+        const tryAddProfile = (name: string, url: string) => {
+          if (!name || !url) return;
+          // Check if already inserted
+          if (profiles.some(p => p.url.replace(/\/$/, '') === url.replace(/\/$/, ''))) return;
+          // Normalise name for canonical display
+          let cleanName = name;
+          if (url.includes("facebook.com")) cleanName = "Facebook";
+          if (url.includes("instagram.com")) cleanName = "Instagram";
+          if (url.includes("twitter.com") || url.includes("x.com")) cleanName = "X";
+          if (url.includes("linkedin.com")) cleanName = "LinkedIn";
+          if (url.includes("youtube.com")) cleanName = "YouTube";
+          if (url.includes("pinterest.com")) cleanName = "Pinterest";
+          profiles.push({ name: cleanName, url });
+        };
+
+        // 1. Standard profiles array from Knowledge Graph (VERY RELIABLE)
+        if (knowledgeGraph?.profiles && Array.isArray(knowledgeGraph.profiles)) {
+          knowledgeGraph.profiles.forEach((p: any) => tryAddProfile(p.name, p.link));
+        }
+
+        // 2. Profiles array from Maps if available
         if (placeResult?.profiles && Array.isArray(placeResult.profiles)) {
-          placeResult.profiles.forEach((p: any) => {
-            if (p.name && p.link) {
-              profiles.push({ name: p.name, url: p.link });
-            }
-          });
+          placeResult.profiles.forEach((p: any) => tryAddProfile(p.name, p.link));
         }
         
-        // 2. Recursive scan for any social media links inside placeResult
+        // 3. Recursive scan for any social media links inside BOTH search results
         const socialRegexes = [
           { name: "Facebook", regex: /https?:\/\/(www\.)?facebook\.com\/[a-zA-Z0-9_.-]+/i },
           { name: "Instagram", regex: /https?:\/\/(www\.)?instagram\.com\/[a-zA-Z0-9_.-]+/i },
@@ -244,9 +318,7 @@ const ListingPage = () => {
               const match = obj.match(regex);
               if (match && match[0] && !foundUrls.has(match[0])) {
                 foundUrls.add(match[0]);
-                if (!profiles.some(p => p.name.toLowerCase() === name.toLowerCase())) {
-                  profiles.push({ name, url: match[0] });
-                }
+                tryAddProfile(name, match[0]);
               }
             });
           } else if (typeof obj === 'object') {
@@ -257,18 +329,22 @@ const ListingPage = () => {
             }
           }
         }
-        scanForSocialUrls(placeResult);
         
-        // 3. Fallback scan of listing raw if empty
+        // Scan maps response
+        scanForSocialUrls(mapsJson);
+        // Scan google search response (very powerful for finding profiles in organic list)
+        scanForSocialUrls(googleJson);
+        
+        // 4. Fallback scan of listing raw stored in DB
         if (profiles.length === 0 && listing.raw) {
           scanForSocialUrls(listing.raw);
         }
         
+        console.log("[SERP] Final Extracted Profiles:", profiles);
         setSocialProfiles(profiles);
 
         const dataId = placeResult?.data_id;
         if (!dataId) return;
-
 
         // Only fetch posts if they are missing from the DB
         if (!listing.posts || listing.posts.length === 0) {
@@ -295,7 +371,7 @@ const ListingPage = () => {
       }
     };
 
-    if (listing && (!liveTags || !listing.posts || listing.posts.length === 0)) {
+    if (listing && (!liveTags || !listing.posts || listing.posts.length === 0 || socialProfiles.length === 0)) {
       fetchLiveData();
     }
   }, [listing]);
@@ -483,18 +559,18 @@ const ListingPage = () => {
             {/* Quick Actions */}
             <div className="flex flex-wrap gap-2 flex-shrink-0">
               {listing.phone && (
-                <Button asChild size="sm" className="rounded-full btn-gradient border-0 text-white shadow-md hover:shadow-lg hover:opacity-90 transition-all">
+                <Button asChild size="sm" className="rounded-full bg-[#0073c8] hover:bg-[#0065ad] text-white border-0 shadow-md hover:shadow-lg transition-all font-semibold">
                   <a href={`tel:${listing.phone}`}><Phone className="h-4 w-4 mr-2" /> Call</a>
                 </Button>
               )}
+              <Button asChild size="sm" className="rounded-full bg-[#34A853] hover:bg-[#2E964A] text-white border-0 shadow-md hover:shadow-lg transition-all font-semibold">
+                <a href={mapsLink} target="_blank" rel="noopener noreferrer"><Navigation className="h-4 w-4 mr-2" /> Directions</a>
+              </Button>
               {whatsappLink && (
-                <Button asChild size="sm" className="rounded-full btn-gradient border-0 text-white shadow-md hover:shadow-lg hover:opacity-90 transition-all">
+                <Button asChild size="sm" className="rounded-full bg-[#25D366] hover:bg-[#20BA5A] text-white border-0 shadow-md hover:shadow-lg transition-all font-semibold">
                   <a href={whatsappLink} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-4 w-4 mr-2" /> WhatsApp</a>
                 </Button>
               )}
-              <Button asChild size="sm" className="rounded-full btn-gradient border-0 text-white shadow-md hover:shadow-lg hover:opacity-90 transition-all">
-                <a href={mapsLink} target="_blank" rel="noopener noreferrer"><Navigation className="h-4 w-4 mr-2" /> Directions</a>
-              </Button>
               {socialProfiles.map((p, idx) => {
                 const getSocialIcon = (name: string) => {
                   const n = name.toLowerCase();
@@ -503,6 +579,7 @@ const ListingPage = () => {
                   if (n.includes("twitter") || n === "x" || n === "x (twitter)") return <Twitter className="h-4 w-4 mr-2" />;
                   if (n.includes("youtube") || n === "yt") return <Youtube className="h-4 w-4 mr-2" />;
                   if (n.includes("linkedin")) return <Linkedin className="h-4 w-4 mr-2" />;
+                  if (n.includes("pinterest")) return <svg className="h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line><circle cx="12" cy="12" r="10"></circle></svg>;
                   return <Globe className="h-4 w-4 mr-2" />;
                 };
 
@@ -511,7 +588,7 @@ const ListingPage = () => {
                     key={idx} 
                     asChild 
                     size="sm" 
-                    className="rounded-full btn-gradient border-0 text-white shadow-md hover:shadow-lg hover:opacity-90 transition-all"
+                    className="rounded-full bg-secondary hover:bg-muted text-foreground border border-border/50 shadow-sm hover:shadow-md transition-all font-medium"
                   >
                     <a href={p.url} target="_blank" rel="noopener noreferrer">
                       {getSocialIcon(p.name)} 
@@ -633,7 +710,7 @@ const ListingPage = () => {
               <div className="absolute bottom-4 left-4 right-4 md:right-auto md:w-[320px] bg-background/90 backdrop-blur-md p-4 rounded-2xl border border-border shadow-lg">
                  <h4 className="font-semibold text-sm mb-1">{listing.name}</h4>
                  <p className="text-xs text-muted-foreground mb-3 line-clamp-2">{listing.formatted_address}</p>
-                 <Button asChild className="w-full btn-gradient border-0 text-white shadow-md hover:shadow-lg hover:opacity-90 transition-all" size="sm">
+                 <Button asChild className="w-full bg-[#34A853] hover:bg-[#2E964A] border-0 text-white shadow-md hover:shadow-lg transition-all font-medium" size="sm">
                    <a href={mapsLink} target="_blank" rel="noopener noreferrer">Open in Google Maps</a>
                  </Button>
               </div>

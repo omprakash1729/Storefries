@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Seo } from "@/components/Seo";
 import { SiteHeader, SiteFooter } from "@/components/SiteChrome";
-import { Star, MapPin, Folder, ChevronRight, ArrowLeft } from "lucide-react";
+import { Star, MapPin, Folder, ChevronRight, ArrowLeft, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { photoUrl } from "@/lib/photo";
 
 interface Row {
@@ -35,6 +36,30 @@ const Listings = () => {
         setLoading(false);
       });
   }, []);
+
+  const handleDeleteListing = async (e: React.MouseEvent, slug: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!confirm("Are you sure you want to delete this listing?")) {
+      return;
+    }
+    
+    try {
+      const { error } = await supabase
+        .from("listings")
+        .delete()
+        .eq("slug", slug);
+        
+      if (error) throw error;
+      
+      toast.success("Listing deleted successfully");
+      setRows(prev => prev.filter(r => r.slug !== slug));
+    } catch (err) {
+      console.error("Deletion failed:", err);
+      toast.error("Failed to delete listing");
+    }
+  };
 
   // Smart NLP String Similarity Algorithm (Sørensen–Dice coefficient)
   const getBigrams = (str: string) => {
@@ -235,8 +260,19 @@ const Listings = () => {
                 <Link
                   key={displaySlug}
                   to={`/l/${displaySlug}`}
-                  className="group flex flex-col rounded-2xl border border-border bg-card shadow-soft hover:shadow-card hover:-translate-y-1 transition-all duration-300 overflow-hidden"
+                  className="group relative flex flex-col rounded-2xl border border-border bg-card shadow-soft hover:shadow-card hover:-translate-y-1 transition-all duration-300 overflow-hidden"
                 >
+                  <div className="absolute top-3 right-3 z-10">
+                    <Button 
+                      size="icon" 
+                      variant="ghost" 
+                      className="h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                      onClick={(e) => handleDeleteListing(e, r.slug)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  
                   <div className="relative h-48 w-full bg-muted overflow-hidden">
                     {heroPhoto ? (
                       <img 
