@@ -113,21 +113,23 @@ async function getPlaceDetails(placeId: string) {
   return json;
 }
 
-async function fetchGmbPosts(name: string, address: string) {
+async function fetchGmbData(name: string, address: string) {
   try {
     const query = encodeURIComponent(`${name} ${address}`);
     const mapsRes = await fetch(`https://serpapi.com/search.json?engine=google_maps&q=${query}&api_key=${SERPAPI_KEY}`);
     const mapsJson = await mapsRes.json();
-    const dataId = mapsJson.local_results?.[0]?.data_id || mapsJson.place_results?.data_id;
+    const local = mapsJson.local_results?.[0] || mapsJson.place_results;
+    const dataId = local?.data_id;
+    const type = local?.type && Array.isArray(local.type) && local.type.length > 0 ? local.type[0] : null;
     
-    if (!dataId) return [];
+    if (!dataId) return { posts: [], type };
 
     const postsRes = await fetch(`https://serpapi.com/search.json?engine=google_maps_posts&data_id=${dataId}&api_key=${SERPAPI_KEY}`);
     const postsJson = await postsRes.json();
     
-    if (!postsJson.posts || !Array.isArray(postsJson.posts)) return [];
+    if (!postsJson.posts || !Array.isArray(postsJson.posts)) return { posts: [], type };
     
-    return postsJson.posts.map((post: any) => ({
+    const posts = postsJson.posts.map((post: any) => ({
       title: post.title,
       content: post.description || post.snippet,
       photoUri: post.thumbnails?.[0] || post.thumbnail,
@@ -137,9 +139,11 @@ async function fetchGmbPosts(name: string, address: string) {
         label: post.online_link_text || "Learn more"
       } : undefined
     }));
+    
+    return { posts, type };
   } catch (error) {
-    console.error("Error fetching GMB posts:", error);
-    return [];
+    console.error("Error fetching GMB data:", error);
+    return { posts: [], type: null };
   }
 }
 
@@ -221,6 +225,8 @@ Deno.serve(async (req) => {
       slug = `${baseSlug}-${n}`;
     }
 
+    const gmbData = await fetchGmbData(name, details.formattedAddress || "");
+
     const row = {
       slug,
       place_id: placeId,
@@ -228,7 +234,7 @@ Deno.serve(async (req) => {
       formatted_address: details.formattedAddress ?? null,
       phone: details.internationalPhoneNumber ?? details.nationalPhoneNumber ?? null,
       website: details.websiteUri ?? null,
-      category: details.primaryTypeDisplayName?.text ?? details.types?.[0] ?? null,
+      category: gmbData.type || details.primaryTypeDisplayName?.text || details.types?.[0] || null,
       rating: details.rating ?? null,
       user_ratings_total: details.userRatingCount ?? null,
       lat: details.location?.latitude ?? null,
@@ -239,7 +245,7 @@ Deno.serve(async (req) => {
       editorial_summary: details.editorialSummary?.text ?? null,
       google_maps_url: details.googleMapsUri ?? null,
       raw: details,
-      posts: await fetchGmbPosts(name, details.formattedAddress || ""),
+      posts: gmbData.posts,
     };
 
     const { error: insertErr } = await supabase.from("listings").insert(row);

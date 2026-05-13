@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Seo } from "@/components/Seo";
 import { SiteHeader, SiteFooter } from "@/components/SiteChrome";
-import { Star, MapPin, Folder, ChevronRight, ArrowLeft, Trash2 } from "lucide-react";
+import { Star, MapPin, Folder, ChevronRight, ArrowLeft, Tag, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { photoUrl } from "@/lib/photo";
+import { getBestCategory } from "@/lib/utils";
 
 interface Row {
   slug: string;
@@ -23,7 +24,8 @@ interface Row {
 const Listings = () => {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedBrand, setSelectedBrand] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"brand" | "category" | "location">("brand");
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
 
   useEffect(() => {
     supabase
@@ -36,6 +38,71 @@ const Listings = () => {
         setLoading(false);
       });
   }, []);
+  
+  const [dynamicCategories, setDynamicCategories] = useState<Record<string, string>>({});
+  const fetchedSlugsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (rows.length === 0) return;
+    
+    const genericTerms = ["establishment", "point_of_interest", "service", "services", "store", "food"];
+    
+    // Filter rows stuck with generic categories to lazy enrich
+    const itemsToEnrich = rows.filter(r => {
+      const current = getBestCategory(r.category, r.raw, r.name);
+      const isGeneric = !current || genericTerms.includes(current.toLowerCase());
+      return isGeneric && !fetchedSlugsRef.current.has(r.slug);
+    });
+
+    if (itemsToEnrich.length === 0) return;
+
+    const processEnrichments = async () => {
+      const apiKey = import.meta.env.VITE_SERPAPI_KEY;
+      if (!apiKey) return;
+
+      for (const item of itemsToEnrich) {
+        if (fetchedSlugsRef.current.has(item.slug)) continue;
+        fetchedSlugsRef.current.add(item.slug);
+
+        try {
+          let city = "";
+          if (item.raw?.addressComponents && Array.isArray(item.raw.addressComponents)) {
+            const comp = item.raw.addressComponents.find((c: any) => 
+              c.types?.includes("locality") || c.types?.includes("sublocality_level_1") || c.types?.includes("sublocality")
+            );
+            if (comp) city = comp.longText || comp.shortText;
+          }
+          if (!city && item.formatted_address) {
+            const parts = item.formatted_address.split(',').map((p: any) => p.trim());
+            if (parts.length >= 3) city = parts[parts.length - 3];
+            else if (parts.length > 1) city = parts[1];
+          }
+          
+          const searchStr = city ? `${item.name} ${city}` : item.name;
+          const query = encodeURIComponent(searchStr);
+          const mapsUrl = `/api/serpapiProxy?engine=google_maps&q=${query}&api_key=${apiKey}`;
+
+          const res = await fetch(mapsUrl);
+          if (res.ok) {
+            const mapsJson = await res.json();
+            const local = mapsJson.local_results?.[0] || mapsJson.place_results;
+            const realType = local?.type && Array.isArray(local.type) && local.type.length > 0 ? local.type[0] : null;
+            if (realType) {
+              setDynamicCategories(prev => ({
+                ...prev,
+                [item.slug]: realType
+              }));
+            }
+          }
+          await new Promise(res => setTimeout(res, 500)); // Delay between fetches
+        } catch (err) {
+          console.error("Failed dynamic resolve:", item.name, err);
+        }
+      }
+    };
+
+    processEnrichments();
+  }, [rows]);
 
   const handleDeleteListing = async (e: React.MouseEvent, slug: string) => {
     e.preventDefault();
@@ -179,30 +246,121 @@ const Listings = () => {
     return clusters;
   };
 
-  const groupedListings = clusterListings(rows);
-  const brands = Object.keys(groupedListings).sort();
+  // --- Multi-mode grouping logic ---
+
+  const getCategoryForGrouping = (r: Row) => {
+    const best = dynamicCategories[r.slug] || getBestCategory(r.category, r.raw, r.name);
+    return best || "Other Categories";
+  };
+
+  const getCityForGrouping = (r: Row) => {
+    if (!r.formatted_address) return "Other Locations";
+    
+    // Try structured address first
+    if (r.raw?.addressComponents && Array.isArray(r.raw.addressComponents)) {
+      const comp = r.raw.addressComponents.find((c: any) => 
+        c.types?.includes("locality") || c.types?.includes("sublocality_level_1") || c.types?.includes("sublocality")
+      );
+      if (comp) return comp.longText || comp.shortText;
+    }
+    
+    // Fallback logic matching Listing page
+    const addr = r.formatted_address.toLowerCase();
+    if (addr.includes("sholinganallur")) return "Sholinganallur";
+    if (addr.includes("chennai")) return "Chennai";
+    if (addr.includes("madurai")) return "Madurai";
+    if (addr.includes("tirunelveli")) return "Tirunelveli";
+    
+    const parts = r.formatted_address.split(',').map((p: string) => p.trim());
+    if (parts.length >= 3) return parts[parts.length - 3];
+    return parts[1] || parts[0] || "Other Locations";
+  };
+
+  const groupedByBrand = clusterListings(rows);
+
+  const groupedByCategory: Record<string, Row[]> = {};
+  rows.forEach(r => {
+    const cat = getCategoryForGrouping(r);
+    if (!groupedByCategory[cat]) groupedByCategory[cat] = [];
+    groupedByCategory[cat].push(r);
+  });
+
+  const groupedByLocation: Record<string, Row[]> = {};
+  rows.forEach(r => {
+    const loc = getCityForGrouping(r);
+    if (!groupedByLocation[loc]) groupedByLocation[loc] = [];
+    groupedByLocation[loc].push(r);
+  });
+
+  const activeGroups = viewMode === "category" 
+    ? groupedByCategory 
+    : viewMode === "location" 
+      ? groupedByLocation 
+      : groupedByBrand;
+
+  const folders = Object.keys(activeGroups).sort();
+
+  const getFolderIcon = () => {
+    if (viewMode === "location") return MapPin;
+    if (viewMode === "category") return Tag;
+    return Building2;
+  };
+  
+  const ActiveFolderIcon = getFolderIcon();
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Seo title="Browse Listings | Storefries" description="Browse all generated business landing pages." />
       <SiteHeader />
       <main className="flex-1 container py-12">
-        {!selectedBrand ? (
+        {!selectedFolder ? (
           <>
-            <h1 className="text-3xl md:text-4xl font-bold mb-2">Browse Brands</h1>
-            <p className="text-muted-foreground mb-8">Select a brand to view its locations.</p>
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+              <div>
+                <h1 className="text-3xl md:text-4xl font-bold mb-2">Browse Listings</h1>
+                <p className="text-muted-foreground">Select how you want to organize and view listings.</p>
+              </div>
+              
+              {/* Grouping Toggle */}
+              <div className="flex p-1 bg-secondary/50 rounded-xl w-fit backdrop-blur-sm border border-border/50">
+                {[
+                  { id: "brand", label: "Companies", icon: Building2 },
+                  { id: "location", label: "Locations", icon: MapPin },
+                  { id: "category", label: "Categories", icon: Tag }
+                ].map((mode) => {
+                  const Icon = mode.icon;
+                  return (
+                    <button
+                      key={mode.id}
+                      onClick={() => setViewMode(mode.id as any)}
+                      className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+                        viewMode === mode.id 
+                          ? "bg-background text-brand-blue shadow-sm" 
+                          : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {mode.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </>
         ) : (
           <div className="mb-8">
             <Button 
               variant="ghost" 
               className="mb-4 pl-0 hover:bg-transparent hover:text-brand-blue" 
-              onClick={() => setSelectedBrand(null)}
+              onClick={() => setSelectedFolder(null)}
             >
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Brands
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Browse
             </Button>
-            <h1 className="text-3xl md:text-4xl font-bold mb-2">{selectedBrand}</h1>
-            <p className="text-muted-foreground">Showing {groupedListings[selectedBrand]?.length || 0} locations.</p>
+            <h1 className="text-3xl md:text-4xl font-bold mb-2 flex items-center gap-3">
+              <ActiveFolderIcon className="h-8 w-8 text-brand-blue/70" />
+              {selectedFolder}
+            </h1>
+            <p className="text-muted-foreground">Showing {activeGroups[selectedFolder]?.length || 0} matching listings.</p>
           </div>
         )}
 
@@ -212,49 +370,41 @@ const Listings = () => {
           <div className="card-tint-blue rounded-2xl p-10 text-center border border-border/50">
             <p className="text-muted-foreground">No listings yet. <Link to="/" className="text-brand-blue font-medium">Generate one</Link>.</p>
           </div>
-        ) : !selectedBrand ? (
+        ) : !selectedFolder ? (
           // FOLDERS VIEW
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {brands.map((brand) => (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {folders.map((folder) => (
               <div 
-                key={brand}
-                onClick={() => setSelectedBrand(brand)}
+                key={folder}
+                onClick={() => setSelectedFolder(folder)}
                 className="cursor-pointer group flex flex-col rounded-2xl border border-border bg-card p-6 shadow-soft hover:shadow-card hover:-translate-y-1 transition-all duration-300"
               >
                 <div className="flex items-center justify-between mb-5">
                   <div className="h-12 w-12 rounded-xl bg-brand-blue/10 flex items-center justify-center text-brand-blue group-hover:scale-110 group-hover:bg-brand-blue group-hover:text-white transition-all duration-300">
-                    <Folder className="h-6 w-6" />
+                    <ActiveFolderIcon className="h-6 w-6" />
                   </div>
                   <span className="bg-secondary text-xs font-semibold px-2.5 py-1 rounded-full text-muted-foreground group-hover:text-foreground transition-colors">
-                    {groupedListings[brand].length} {groupedListings[brand].length === 1 ? 'Branch' : 'Branches'}
+                    {activeGroups[folder].length} {activeGroups[folder].length === 1 ? 'Location' : 'Locations'}
                   </span>
                 </div>
-                <h3 className="text-xl font-bold mb-1 group-hover:text-brand-blue transition-colors line-clamp-2">{brand}</h3>
+                <h3 className="text-xl font-bold mb-1 group-hover:text-brand-blue transition-colors line-clamp-2">{folder}</h3>
                 <p className="text-sm text-brand-blue/70 flex items-center gap-1 mt-auto pt-4 opacity-0 group-hover:opacity-100 transition-opacity translate-x-[-10px] group-hover:translate-x-0 duration-300">
-                  View locations <ChevronRight className="h-3 w-3" />
+                  View listings <ChevronRight className="h-3 w-3" />
                 </p>
               </div>
             ))}
           </div>
         ) : (
-          // LISTINGS GRID VIEW (For selected brand)
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {(groupedListings[selectedBrand] || []).map((r) => {
+          // LISTINGS GRID VIEW (For selected folder)
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {(activeGroups[selectedFolder] || []).map((r) => {
               const photos = (r.photos ?? []) as Array<{ name: string }>;
               const heroPhoto = photos[0];
               const displaySlug = r.slug === "tulips-multispeciality-hospital-chennai"
                 ? "tulips-multispeciality-hospital-sholinganallur"
                 : r.slug;
               
-              // Extract best possible category from raw data
-              let displayCategory = r.category;
-              if (r.raw?.primaryTypeDisplayName?.text) {
-                displayCategory = r.raw.primaryTypeDisplayName.text;
-              } else if (r.raw?.types && r.raw.types.length > 0) {
-                // Filter out generic types if possible, or just take the first and format it
-                const type = r.raw.types[0].replace(/_/g, ' ');
-                displayCategory = type.replace(/\b\w/g, (c: string) => c.toUpperCase());
-              }
+              const displayCategory = dynamicCategories[r.slug] || getBestCategory(r.category, r.raw, r.name);
               
               return (
                 <Link
@@ -262,17 +412,6 @@ const Listings = () => {
                   to={`/l/${displaySlug}`}
                   className="group relative flex flex-col rounded-2xl border border-border bg-card shadow-soft hover:shadow-card hover:-translate-y-1 transition-all duration-300 overflow-hidden"
                 >
-                  <div className="absolute top-3 right-3 z-10">
-                    <Button 
-                      size="icon" 
-                      variant="ghost" 
-                      className="h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-                      onClick={(e) => handleDeleteListing(e, r.slug)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  
                   <div className="relative h-48 w-full bg-muted overflow-hidden">
                     {heroPhoto ? (
                       <img 

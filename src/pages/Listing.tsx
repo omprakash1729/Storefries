@@ -5,6 +5,7 @@ import { Seo } from "@/components/Seo";
 import { SiteHeader, SiteFooter } from "@/components/SiteChrome";
 import { Button } from "@/components/ui/button";
 import { photoUrl } from "@/lib/photo";
+import { getBestCategory } from "@/lib/utils";
 import { Star, MapPin, Phone, Globe, Clock, Tag, Navigation, MessageCircle, ExternalLink, Heart, Send, Bookmark, Facebook, Instagram, Twitter, Youtube, Linkedin } from "lucide-react";
 
 interface Listing {
@@ -25,6 +26,7 @@ interface Listing {
   reviews: any;
   editorial_summary: string | null;
   google_maps_url: string | null;
+  raw?: any;
 }
 
 const Stars = ({ value }: { value: number }) => (
@@ -414,6 +416,9 @@ const ListingPage = () => {
   const posts = livePosts || dbPosts;
   const hours = listing.opening_hours?.weekdayDescriptions as string[] | undefined;
   const heroPhoto = photos[0];
+  const displayCategory = (liveTags && liveTags.length > 0)
+    ? liveTags[0]
+    : getBestCategory(listing.category, listing.raw, listing.name);
 
   const jsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
@@ -478,7 +483,7 @@ const ListingPage = () => {
         title={`${listing.name}${listing.formatted_address ? " — " + getCityOrBranch(listing.formatted_address) : ""} | Storefries`}
         description={
           listing.editorial_summary ??
-          `${listing.name}${listing.category ? ` (${listing.category})` : ""}${listing.formatted_address ? " located at " + listing.formatted_address : ""}.`
+          `${listing.name}${displayCategory ? ` (${displayCategory})` : ""}${listing.formatted_address ? " located at " + listing.formatted_address : ""}.`
         }
         image={heroPhoto ? photoUrl(heroPhoto.name, 1200) : undefined}
         jsonLd={jsonLd}
@@ -500,18 +505,23 @@ const ListingPage = () => {
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/40 to-transparent" />
           
-          <div className="absolute bottom-0 left-0 w-full">
-            <div className="container pb-6 md:pb-10">
-              {listing.category && (
-                <span className="inline-block px-3 py-1 mb-3 text-xs font-semibold uppercase tracking-wider text-white bg-brand-blue/90 rounded-full backdrop-blur-sm">
-                  {listing.category}
+          <div className="absolute top-0 left-0 w-full pt-6">
+            <div className="container flex justify-end">
+              {displayCategory && (
+                <span className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-white bg-brand-blue/90 rounded-full backdrop-blur-sm shadow-sm transition-all hover:bg-brand-blue hover:shadow-md cursor-default z-20">
+                  {displayCategory}
                 </span>
               )}
-              <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-b from-gray-900 to-gray-600 inline-block pb-1">
+            </div>
+          </div>
+
+          <div className="absolute bottom-0 left-0 w-full">
+            <div className="container pb-6 md:pb-10 flex flex-col items-start gap-1">
+              <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-gray-900 to-gray-600 block pb-1 text-left tracking-tight w-full">
                 {listing.name}
               </h1>
               
-              <div className="flex flex-wrap items-center gap-4 text-sm md:text-base">
+              <div className="mt-2 flex flex-wrap items-center gap-4 text-sm md:text-base">
                 {listing.rating != null && (
                   <div className="flex items-center gap-2 bg-background/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-border/50">
                     <Stars value={listing.rating} />
@@ -559,16 +569,16 @@ const ListingPage = () => {
             {/* Quick Actions */}
             <div className="flex flex-wrap gap-2 flex-shrink-0">
               {listing.phone && (
-                <Button asChild size="sm" className="rounded-full bg-[#0073c8] hover:bg-[#0065ad] text-white border-0 shadow-md hover:shadow-lg transition-all font-semibold">
-                  <a href={`tel:${listing.phone}`}><Phone className="h-4 w-4 mr-2" /> Call</a>
+                <Button asChild size="icon" title="Call" className="h-9 w-9 rounded-full bg-[#0073c8] hover:bg-[#0065ad] text-white border-0 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 font-semibold">
+                  <a href={`tel:${listing.phone}`}><Phone className="h-4 w-4" /></a>
                 </Button>
               )}
-              <Button asChild size="sm" className="rounded-full bg-[#34A853] hover:bg-[#2E964A] text-white border-0 shadow-md hover:shadow-lg transition-all font-semibold">
-                <a href={mapsLink} target="_blank" rel="noopener noreferrer"><Navigation className="h-4 w-4 mr-2" /> Directions</a>
+              <Button asChild size="icon" title="Directions" className="h-9 w-9 rounded-full bg-[#34A853] hover:bg-[#2E964A] text-white border-0 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 font-semibold">
+                <a href={mapsLink} target="_blank" rel="noopener noreferrer"><Navigation className="h-4 w-4" /></a>
               </Button>
               {whatsappLink && (
-                <Button asChild size="sm" className="rounded-full bg-[#25D366] hover:bg-[#20BA5A] text-white border-0 shadow-md hover:shadow-lg transition-all font-semibold">
-                  <a href={whatsappLink} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-4 w-4 mr-2" /> WhatsApp</a>
+                <Button asChild size="icon" title="WhatsApp" className="h-9 w-9 rounded-full bg-[#25D366] hover:bg-[#20BA5A] text-white border-0 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 font-semibold">
+                  <a href={whatsappLink} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-4 w-4" /></a>
                 </Button>
               )}
               {(() => {
@@ -632,7 +642,7 @@ const ListingPage = () => {
                   ) : listing.editorial_summary ? (
                     <p>{listing.editorial_summary}</p>
                   ) : (
-                    <p>{listing.name} is a local business{listing.category ? ` categorized under ${listing.category}` : ""}{listing.formatted_address ? `, located at ${listing.formatted_address}` : ""}.</p>
+                    <p>{listing.name} is a local business{displayCategory ? ` categorized under ${displayCategory}` : ""}{listing.formatted_address ? `, located at ${listing.formatted_address}` : ""}.</p>
                   )}
                 </div>
 
@@ -963,18 +973,18 @@ const ListingPage = () => {
           )}
 
           {/* Category Tags */}
-          {(listing.category || (liveTags && liveTags.length > 0)) && (
+          {(displayCategory || (liveTags && liveTags.length > 0)) && (
             <section id="category" className="scroll-mt-24 pb-4">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4">Categories & Tags</h3>
               <div className="flex flex-wrap gap-2.5">
-                {listing.category && (
+                {displayCategory && (
                   <div className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-brand-blue text-white shadow-md text-sm font-semibold border border-transparent hover:-translate-y-0.5 transition-transform cursor-default">
                     <Tag className="h-4 w-4" />
-                    {listing.category}
+                    {displayCategory}
                   </div>
                 )}
                 
-                {liveTags && liveTags.filter(t => t.toLowerCase() !== listing.category?.toLowerCase()).map((tag, i) => (
+                {liveTags && liveTags.filter(t => t.toLowerCase() !== displayCategory?.toLowerCase()).map((tag, i) => (
                   <div key={i} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-background text-sm font-medium border border-border shadow-soft hover:border-brand-blue/30 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-default text-foreground/80">
                     {tag}
                   </div>
