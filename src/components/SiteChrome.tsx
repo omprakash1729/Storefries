@@ -70,12 +70,6 @@ export const SiteHeader = () => {
           >
             Browse
           </Link>
-          <Link
-            to="/admin"
-            className={pathname === "/admin" ? "text-brand-blue" : "text-foreground hover:text-brand-blue"}
-          >
-            Admin
-          </Link>
 
           {!authLoading && (
             user ? (
