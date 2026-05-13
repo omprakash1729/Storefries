@@ -39,19 +39,25 @@ const Listings = () => {
       });
   }, []);
   
-  const [dynamicCategories, setDynamicCategories] = useState<Record<string, string>>({});
+  const [dynamicCategories, setDynamicCategories] = useState<Record<string, string>>(() => {
+    try {
+      const cached = localStorage.getItem("storefries_live_categories");
+      return cached ? JSON.parse(cached) : {};
+    } catch {
+      return {};
+    }
+  });
   const fetchedSlugsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (rows.length === 0) return;
     
-    const genericTerms = ["establishment", "point_of_interest", "service", "services", "store", "food"];
-    
-    // Filter rows stuck with generic categories to lazy enrich
+    // Universal Enrichment: Fetch live categories for ANY item that is missing from our live cache
     const itemsToEnrich = rows.filter(r => {
-      const current = getBestCategory(r.category, r.raw, r.name);
-      const isGeneric = !current || genericTerms.includes(current.toLowerCase());
-      return isGeneric && !fetchedSlugsRef.current.has(r.slug);
+      // If we already have it cached or resolved, skip enrichment!
+      if (dynamicCategories[r.slug]) return false;
+      // Avoid duplicate requests within this page session
+      return !fetchedSlugsRef.current.has(r.slug);
     });
 
     if (itemsToEnrich.length === 0) return;
@@ -88,13 +94,14 @@ const Listings = () => {
             const local = mapsJson.local_results?.[0] || mapsJson.place_results;
             const realType = local?.type && Array.isArray(local.type) && local.type.length > 0 ? local.type[0] : null;
             if (realType) {
-              setDynamicCategories(prev => ({
-                ...prev,
-                [item.slug]: realType
-              }));
+              setDynamicCategories(prev => {
+                const updated = { ...prev, [item.slug]: realType };
+                localStorage.setItem("storefries_live_categories", JSON.stringify(updated));
+                return updated;
+              });
             }
           }
-          await new Promise(res => setTimeout(res, 500)); // Delay between fetches
+          await new Promise(res => setTimeout(res, 1000)); // Polite delay between serial API fetches
         } catch (err) {
           console.error("Failed dynamic resolve:", item.name, err);
         }
@@ -102,7 +109,7 @@ const Listings = () => {
     };
 
     processEnrichments();
-  }, [rows]);
+  }, [rows, dynamicCategories]);
 
   const handleDeleteListing = async (e: React.MouseEvent, slug: string) => {
     e.preventDefault();
