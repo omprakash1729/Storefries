@@ -104,7 +104,18 @@ const SignIn = () => {
             email,
             password,
           });
-          if (reSignInError) throw reSignInError;
+          
+          if (reSignInError) {
+            if (reSignInError.message?.toLowerCase().includes("email not confirmed") || 
+                reSignInError.message?.toLowerCase().includes("confirmation")) {
+              toast.error(
+                "Developer account auto-registered! However, 'Email Confirmation' is active in your Supabase project. To log in instantly, go to your Supabase Dashboard -> Authentication -> Providers -> Email and turn OFF 'Confirm email'.",
+                { duration: 10000 }
+              );
+              return;
+            }
+            throw reSignInError;
+          }
           
           toast.success("Developer account auto-created and logged in!");
         } else if (signInErr) {
