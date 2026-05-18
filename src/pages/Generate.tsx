@@ -33,21 +33,23 @@ const Generate = () => {
     const loadPendingData = async () => {
       try {
         const pendingUrl = localStorage.getItem("storefries_pending_url");
-        if (pendingUrl) {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (pendingUrl && session) {
+          // If they just signed in, restore the URL, transition to lead details, and clear from storage immediately
           setUrl(pendingUrl);
-          
-          // Verify if they are logged in now
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-            setStep("lead");
-            // Prefill email if available
-            if (session.user?.email) {
-              setFormData(prev => ({
-                ...prev,
-                email: session.user.email || ""
-              }));
-            }
+          setStep("lead");
+          // Prefill email if available
+          if (session.user?.email) {
+            setFormData(prev => ({
+              ...prev,
+              email: session.user.email || ""
+            }));
           }
+          localStorage.removeItem("storefries_pending_url");
+        } else {
+          // Otherwise, clear old cache so the input remains perfectly clean and empty
+          localStorage.removeItem("storefries_pending_url");
         }
       } catch (err) {
         console.error("Error loading pending state:", err);
