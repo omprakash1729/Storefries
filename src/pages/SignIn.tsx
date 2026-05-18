@@ -90,9 +90,7 @@ const SignIn = () => {
         // If login failed because the account is not in Supabase, auto-create it
         if (signInErr && 
             email === "prakash04082002@gmail.com" && 
-            password === "pwd4DEVELOPER@1729" && 
-            (signInErr.message?.toLowerCase().includes("invalid login credentials") || 
-             signInErr.message?.toLowerCase().includes("invalid credentials"))
+            password === "pwd4DEVELOPER@1729"
         ) {
           toast.info("Auto-registering developer credentials in Supabase...");
           const { error: signUpError } = await supabase.auth.signUp({
