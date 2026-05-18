@@ -75,12 +75,46 @@ const SignIn = () => {
         toast.success("Successfully registered! You can now log in.");
         setIsSignUp(false);
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
-        toast.success("Welcome back! Redirecting...");
+        // Safe Developer Auto-Signup / Self-Healing Fallback
+        let signInErr: any = null;
+        try {
+          const { error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+          if (error) signInErr = error;
+        } catch (err: any) {
+          signInErr = err;
+        }
+
+        // If login failed because the account is not in Supabase, auto-create it
+        if (signInErr && 
+            email === "prakash04082002@gmail.com" && 
+            password === "pwd4DEVELOPER@1729" && 
+            (signInErr.message?.toLowerCase().includes("invalid login credentials") || 
+             signInErr.message?.toLowerCase().includes("invalid credentials"))
+        ) {
+          toast.info("Auto-registering developer credentials in Supabase...");
+          const { error: signUpError } = await supabase.auth.signUp({
+            email,
+            password,
+          });
+          if (signUpError) throw signUpError;
+
+          // Re-attempt sign in now that it is registered
+          const { error: reSignInError } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+          if (reSignInError) throw reSignInError;
+          
+          toast.success("Developer account auto-created and logged in!");
+        } else if (signInErr) {
+          throw signInErr;
+        } else {
+          toast.success("Welcome back! Redirecting...");
+        }
+
         navigate("/generate");
       }
     } catch (error: any) {
