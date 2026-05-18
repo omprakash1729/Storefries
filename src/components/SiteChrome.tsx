@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import { toast } from "sonner";
+import { ThemeToggle } from "./ThemeToggle";
 
 export const SiteHeader = () => {
   const { pathname } = useLocation();
@@ -29,7 +30,7 @@ export const SiteHeader = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin
+          redirectTo: `${window.location.origin}/generate`
         }
       });
       if (error) throw error;
@@ -55,12 +56,19 @@ export const SiteHeader = () => {
     <header className="border-b border-border bg-background">
       <div className="container flex h-24 items-center justify-between">
         <Link to="/" className="flex items-center h-full w-[250px]">
-          <img src="/logo.png" alt="Storefries Logo" className="h-full py-2 w-auto object-contain scale-[2.5] origin-left ml-4" />
+          <img src="/logo.png" alt="Storefries Logo" className="h-full py-2 w-auto object-contain scale-[2.5] origin-left ml-4 dark:hidden" />
+          <img src="/logo-dark.png" alt="Storefries Logo" className="h-full py-2 w-auto object-contain scale-[2.5] origin-left ml-4 hidden dark:block" />
         </Link>
         <nav className="flex items-center gap-6 text-sm font-medium">
           <Link
             to="/"
             className={pathname === "/" ? "text-brand-blue" : "text-foreground hover:text-brand-blue"}
+          >
+            Home
+          </Link>
+          <Link
+            to="/generate"
+            className={pathname === "/generate" ? "text-brand-blue" : "text-foreground hover:text-brand-blue"}
           >
             Generate
           </Link>
@@ -69,6 +77,12 @@ export const SiteHeader = () => {
             className={pathname === "/listings" ? "text-brand-blue" : "text-foreground hover:text-brand-blue"}
           >
             Browse
+          </Link>
+          <Link
+            to="/leads"
+            className={pathname === "/leads" ? "text-brand-blue" : "text-foreground hover:text-brand-blue"}
+          >
+            Leads
           </Link>
 
           {!authLoading && (
@@ -97,9 +111,18 @@ export const SiteHeader = () => {
                 >
                   <LogOut className="h-4 w-4" />
                 </Button>
-              </div>
-            ) : null
+            ) : (
+              <Link to="/signin">
+                <Button
+                  variant="outline"
+                  className="h-9 px-4 rounded-xl text-xs font-bold border-border hover:bg-secondary/40 transition-all duration-300"
+                >
+                  Sign In
+                </Button>
+              </Link>
+            )
           )}
+          <ThemeToggle />
         </nav>
       </div>
     </header>

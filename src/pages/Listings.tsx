@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Seo } from "@/components/Seo";
 import { SiteHeader, SiteFooter } from "@/components/SiteChrome";
-import { Star, MapPin, Folder, ChevronRight, ArrowLeft, Tag, Building2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Star, MapPin, ChevronRight, ArrowLeft, Tag, Building2, Trash2, Loader2 } from "lucide-react";
+
 import { toast } from "sonner";
 import { photoUrl } from "@/lib/photo";
 import { getBestCategory } from "@/lib/utils";
@@ -19,6 +19,7 @@ interface Row {
   photos: any;
   phone: string | null;
   raw: any;
+  user_id?: string | null;
 }
 
 const Listings = () => {
@@ -26,11 +27,16 @@ const Listings = () => {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"brand" | "category" | "location">("brand");
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setCurrentUser(user);
+    });
+
     supabase
       .from("listings")
-      .select("slug,name,formatted_address,rating,user_ratings_total,category,photos,phone,raw")
+      .select("slug,name,formatted_address,rating,user_ratings_total,category,photos,phone,raw,user_id")
       .order("created_at", { ascending: false })
       .limit(100)
       .then(({ data }) => {
@@ -316,37 +322,51 @@ const Listings = () => {
   const ActiveFolderIcon = getFolderIcon();
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col relative overflow-hidden transition-colors duration-300">
+      {/* Modern Grid Background Overlay */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] dark:bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none z-0" />
+      
+      {/* Floating High-End Ambient Glows */}
+      <div className="absolute -top-48 -left-48 w-[600px] h-[600px] bg-brand-blue/5 rounded-full blur-[140px] pointer-events-none z-0" />
+      <div className="absolute top-[400px] right-0 w-[700px] h-[700px] bg-brand-green/[0.03] rounded-full blur-[180px] pointer-events-none z-0" />
+      <div className="absolute bottom-0 left-1/4 w-[800px] h-[800px] bg-[#8b5cf6]/5 rounded-full blur-[220px] pointer-events-none z-0" />
+      
       <Seo title="Browse Listings | Storefries" description="Browse all generated business landing pages." />
       <SiteHeader />
-      <main className="flex-1 container py-12">
+
+      <main className="flex-1 container py-16 relative z-10">
         {!selectedFolder ? (
           <>
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-16 pb-8 border-b border-border/60">
               <div>
-                <h1 className="text-3xl md:text-4xl font-bold mb-2">Browse Listings</h1>
-                <p className="text-muted-foreground">Select how you want to organize and view listings.</p>
+                <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4 text-foreground bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text">
+                  Browse Directory
+                </h1>
+                <p className="text-lg text-muted-foreground max-w-2xl leading-relaxed">
+                  Explore curated local businesses and landing pages, beautifully organized to help you find exactly what you're looking for.
+                </p>
               </div>
               
-              {/* Grouping Toggle */}
-              <div className="flex p-1 bg-secondary/50 rounded-xl w-fit backdrop-blur-sm border border-border/50">
+              {/* Premium Tactile Grouping Toggle */}
+              <div className="flex p-1.5 bg-card/90 dark:bg-black/40 backdrop-blur-md rounded-2xl w-fit border border-border shadow-[0_2px_12px_rgba(0,0,0,0.03)] self-start lg:self-end">
                 {[
                   { id: "brand", label: "Companies", icon: Building2 },
                   { id: "location", label: "Locations", icon: MapPin },
                   { id: "category", label: "Categories", icon: Tag }
                 ].map((mode) => {
                   const Icon = mode.icon;
+                  const isActive = viewMode === mode.id;
                   return (
                     <button
                       key={mode.id}
                       onClick={() => setViewMode(mode.id as any)}
-                      className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
-                        viewMode === mode.id 
-                          ? "bg-background text-brand-blue shadow-sm" 
-                          : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                      className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-xl transition-all duration-300 relative ${
+                        isActive 
+                          ? "bg-background text-brand-blue shadow-md border border-border/50 scale-[1.02]" 
+                          : "text-muted-foreground hover:text-foreground hover:bg-background/40"
                       }`}
                     >
-                      <Icon className="h-3.5 w-3.5" />
+                      <Icon className={`h-4 w-4 transition-transform duration-300 ${isActive ? "scale-110" : ""}`} />
                       {mode.label}
                     </button>
                   );
@@ -355,55 +375,156 @@ const Listings = () => {
             </div>
           </>
         ) : (
-          <div className="mb-8">
-            <Button 
-              variant="ghost" 
-              className="mb-4 pl-0 hover:bg-transparent hover:text-brand-blue" 
+          <div className="mb-16 pb-8 border-b border-border/60">
+            <button 
+              className="inline-flex items-center gap-2 text-sm font-bold text-brand-blue hover:text-brand-blue/80 mb-6 py-2 group transition-all duration-200 bg-brand-blue/5 px-4 rounded-full" 
               onClick={() => setSelectedFolder(null)}
             >
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Browse
-            </Button>
-            <h1 className="text-3xl md:text-4xl font-bold mb-2 flex items-center gap-3">
-              <ActiveFolderIcon className="h-8 w-8 text-brand-blue/70" />
-              {selectedFolder}
-            </h1>
-            <p className="text-muted-foreground">Showing {activeGroups[selectedFolder]?.length || 0} matching listings.</p>
+              <ArrowLeft className="h-4 w-4 transform group-hover:-translate-x-1 transition-transform duration-200" /> 
+              Back to Directory
+            </button>
+            
+            <div className="flex flex-col md:flex-row md:items-center gap-5">
+              <div className="h-16 w-16 rounded-2xl bg-brand-blue/10 flex items-center justify-center text-brand-blue border border-brand-blue/10 shadow-sm">
+                <ActiveFolderIcon className="h-8 w-8" />
+              </div>
+              <div>
+                <h1 className="text-4xl md:text-5xl font-extrabold text-foreground tracking-tight mb-2 leading-tight">
+                  {selectedFolder}
+                </h1>
+                <p className="text-muted-foreground text-lg font-medium">
+                  Showing {activeGroups[selectedFolder]?.length || 0} premium {activeGroups[selectedFolder]?.length === 1 ? 'listing' : 'listings'} available.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
         {loading ? (
-          <p className="text-muted-foreground">Loading...</p>
+          <div className="flex flex-col items-center justify-center py-20 space-y-4">
+            <div className="h-12 w-12 border-4 border-brand-blue/20 border-t-brand-blue rounded-full animate-spin" />
+            <p className="text-muted-foreground font-medium">Curating listings...</p>
+          </div>
         ) : rows.length === 0 ? (
-          <div className="card-tint-blue rounded-2xl p-10 text-center border border-border/50">
-            <p className="text-muted-foreground">No listings yet. <Link to="/" className="text-brand-blue font-medium">Generate one</Link>.</p>
+          <div className="card-tint-blue rounded-3xl p-16 text-center border border-border/50 backdrop-blur-sm shadow-sm max-w-2xl mx-auto">
+            <div className="h-16 w-16 rounded-2xl bg-brand-blue/10 flex items-center justify-center text-brand-blue mx-auto mb-6">
+              <Building2 className="h-8 w-8" />
+            </div>
+            <h3 className="text-2xl font-bold text-foreground mb-2">No listings created yet</h3>
+            <p className="text-muted-foreground mb-8">Be the first to launch an interactive directory landing page.</p>
+            <Link to="/" className="inline-flex items-center justify-center px-6 py-3.5 rounded-xl font-bold btn-gradient shadow-lg shadow-brand-blue/20 hover:shadow-brand-blue/30 hover:scale-[1.02] transition-all duration-200">
+              Generate New Listing
+            </Link>
           </div>
         ) : !selectedFolder ? (
-          // FOLDERS VIEW
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {folders.map((folder) => (
-              <div 
-                key={folder}
-                onClick={() => setSelectedFolder(folder)}
-                className="cursor-pointer group flex flex-col rounded-2xl border border-border bg-card p-6 shadow-soft hover:shadow-card hover:-translate-y-1 transition-all duration-300"
-              >
-                <div className="flex items-center justify-between mb-5">
-                  <div className="h-12 w-12 rounded-xl bg-brand-blue/10 flex items-center justify-center text-brand-blue group-hover:scale-110 group-hover:bg-brand-blue group-hover:text-white transition-all duration-300">
-                    <ActiveFolderIcon className="h-6 w-6" />
+          // REDESIGNED FOLDERS VIEW
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {folders.map((folder) => {
+              const items = activeGroups[folder];
+              const photos = items
+                .map(r => {
+                  const p = (r.photos ?? []) as Array<{ name: string }>;
+                  return p[0]?.name;
+                })
+                .filter(Boolean)
+                .slice(0, 3);
+              
+              const uniqueCities = Array.from(new Set(items.map(r => getCityForGrouping(r)))).filter(c => c !== "Other Locations");
+              
+              // Formulate initials
+              const initials = folder
+                .replace(/[^a-zA-Z0-9 ]/g, "")
+                .split(' ')
+                .filter(w => w.length > 0)
+                .map(w => w[0])
+                .join('')
+                .toUpperCase()
+                .slice(0, 2);
+              
+              // Smart Gradient Generation based on name
+              let hash = 0;
+              for (let i = 0; i < folder.length; i++) {
+                hash = folder.charCodeAt(i) + ((hash << 5) - hash);
+              }
+              const gradients = [
+                "from-[#3b82f6] to-[#2563eb]", // blue
+                "from-[#8b5cf6] to-[#7c3aed]", // violet
+                "from-[#ec4899] to-[#db2777]", // pink
+                "from-[#f59e0b] to-[#d97706]", // amber
+                "from-[#10b981] to-[#059669]", // emerald
+                "from-[#6366f1] to-[#4f46e5]", // indigo
+                "from-[#06b6d4] to-[#0891b2]"  // cyan
+              ];
+              const gradClass = gradients[Math.abs(hash) % gradients.length];
+
+              return (
+                <div 
+                  key={folder}
+                  onClick={() => setSelectedFolder(folder)}
+                  className="cursor-pointer group relative flex flex-col bg-card rounded-3xl border border-border/60 p-7 shadow-[0_8px_30px_rgba(0,0,0,0.02)] hover:shadow-[0_20px_40px_rgba(0,115,200,0.08)] hover:border-brand-blue/20 hover:-translate-y-1.5 transition-all duration-500 overflow-hidden"
+                >
+                  {/* Decorative background glow */}
+                  <div className="absolute -top-24 -right-24 w-48 h-48 bg-brand-blue/5 rounded-full blur-3xl group-hover:bg-brand-blue/10 transition-all duration-500 z-0" />
+                  
+                  <div className="flex items-start justify-between mb-10 relative z-10">
+                    {/* Rich Overlapping Avatars or Colored Initials */}
+                    {photos.length > 0 ? (
+                      <div className="flex -space-x-3 overflow-hidden">
+                        {photos.map((photo, idx) => (
+                          <img
+                            key={idx}
+                            className="inline-block h-12 w-12 rounded-2xl ring-4 ring-background object-cover shadow-sm transition-all group-hover:scale-110 duration-500"
+                            style={{ transitionDelay: `${idx * 50}ms`, zIndex: 3 - idx }}
+                            src={photoUrl(photo, 150)}
+                            alt=""
+                          />
+                        ))}
+                        {items.length > photos.length && (
+                          <div className="inline-flex h-12 w-12 rounded-2xl ring-4 ring-background bg-muted items-center justify-center text-xs font-extrabold text-muted-foreground shadow-sm relative z-0">
+                            +{items.length - photos.length}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className={`h-12 w-12 rounded-2xl bg-gradient-to-br ${gradClass} flex items-center justify-center text-white shadow-md group-hover:scale-110 transition-transform duration-500`}>
+                        <span className="font-extrabold text-[13px] tracking-wider">{initials || <ActiveFolderIcon className="h-5 w-5" />}</span>
+                      </div>
+                    )}
+
+                    {/* Distinct Pill Badge */}
+                    <span className="bg-brand-blue/5 text-brand-blue text-[10px] font-extrabold uppercase tracking-wider px-3 py-1.5 rounded-full border border-brand-blue/10 group-hover:bg-brand-blue group-hover:text-white group-hover:border-transparent transition-all duration-300">
+                      {items.length} {items.length === 1 ? 'Location' : 'Locations'}
+                    </span>
                   </div>
-                  <span className="bg-secondary text-xs font-semibold px-2.5 py-1 rounded-full text-muted-foreground group-hover:text-foreground transition-colors">
-                    {activeGroups[folder].length} {activeGroups[folder].length === 1 ? 'Location' : 'Locations'}
-                  </span>
+
+                  <div className="relative z-10 mt-auto">
+                    <h3 className="text-xl font-extrabold text-foreground mb-2.5 group-hover:text-brand-blue transition-colors line-clamp-2 leading-snug tracking-tight">
+                      {folder}
+                    </h3>
+                    
+                    {viewMode === "brand" && uniqueCities.length > 0 && (
+                      <p className="text-[13px] text-muted-foreground font-medium flex items-center gap-1.5 line-clamp-1">
+                        <MapPin className="h-3.5 w-3.5 text-muted-foreground/70 flex-shrink-0" />
+                        <span>{uniqueCities.join(", ")}</span>
+                      </p>
+                    )}
+
+                    <div className="flex items-center justify-between mt-6 pt-5 border-t border-border/50 group-hover:border-brand-blue/20 transition-colors">
+                      <span className="text-xs font-bold text-muted-foreground group-hover:text-brand-blue transition-colors tracking-wide">
+                        Explore Listings
+                      </span>
+                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground group-hover:bg-brand-blue group-hover:text-white transition-all duration-300 transform translate-x-1 opacity-70 group-hover:translate-x-0 group-hover:opacity-100">
+                        <ChevronRight className="h-4 w-4" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <h3 className="text-xl font-bold mb-1 group-hover:text-brand-blue transition-colors line-clamp-2">{folder}</h3>
-                <p className="text-sm text-brand-blue/70 flex items-center gap-1 mt-auto pt-4 opacity-0 group-hover:opacity-100 transition-opacity translate-x-[-10px] group-hover:translate-x-0 duration-300">
-                  View listings <ChevronRight className="h-3 w-3" />
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
-          // LISTINGS GRID VIEW (For selected folder)
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          // REDESIGNED LISTINGS GRID VIEW (For selected folder)
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {(activeGroups[selectedFolder] || []).map((r) => {
               const photos = (r.photos ?? []) as Array<{ name: string }>;
               const heroPhoto = photos[0];
@@ -412,55 +533,77 @@ const Listings = () => {
                 : r.slug;
               
               const displayCategory = dynamicCategories[r.slug] || getBestCategory(r.category, r.raw, r.name);
+              const canDelete = currentUser && (
+                r.user_id === currentUser.id ||
+                currentUser.email === "prakash04082002@gmail.com"
+              );
               
               return (
                 <Link
                   key={displaySlug}
                   to={`/l/${displaySlug}`}
-                  className="group relative flex flex-col rounded-2xl border border-border bg-card shadow-soft hover:shadow-card hover:-translate-y-1 transition-all duration-300 overflow-hidden"
+                  className="group relative flex flex-col bg-card rounded-3xl border border-border/60 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-[0_20px_40px_rgba(0,0,0,0.08)] hover:-translate-y-1.5 transition-all duration-500 overflow-hidden"
                 >
-                  <div className="relative h-48 w-full bg-muted overflow-hidden">
+                  <div className="relative h-56 w-full bg-muted overflow-hidden">
                     {heroPhoto ? (
                       <img 
                         src={photoUrl(heroPhoto.name, 600)} 
                         alt={r.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                         loading="lazy"
                       />
                     ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-brand-blue/20 to-brand-blue/5 flex items-center justify-center">
-                        <MapPin className="h-8 w-8 text-brand-blue/50" />
+                      <div className="w-full h-full bg-gradient-to-br from-brand-blue/10 to-brand-blue/5 flex items-center justify-center">
+                        <MapPin className="h-10 w-10 text-brand-blue/40 animate-pulse" />
                       </div>
                     )}
+                    
+                    {/* Rich Gradient Overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
                     {displayCategory && (
-                      <div className="absolute top-3 left-3 bg-background/90 backdrop-blur-sm px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-foreground">
+                      <div className="absolute top-4 left-4 bg-background/85 backdrop-blur-md border border-white/20 shadow-sm px-3 py-1.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest text-foreground">
                         {displayCategory}
                       </div>
                     )}
+
+                    {canDelete && (
+                      <button
+                        onClick={(e) => handleDeleteListing(e, r.slug)}
+                        className="absolute top-4 right-4 z-20 h-9 w-9 rounded-full bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/20 text-red-500 backdrop-blur-md flex items-center justify-center transition-all duration-300 shadow-sm"
+                        title="Delete Listing"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                   
-                  <div className="p-5 flex-1 flex flex-col">
-                    <h3 className="font-semibold text-lg mb-2 line-clamp-2 group-hover:text-brand-blue transition-colors">{r.name}</h3>
+                  <div className="p-6 flex-1 flex flex-col relative z-10">
+                    <h3 className="font-extrabold text-lg mb-2.5 text-foreground group-hover:text-brand-blue transition-colors line-clamp-2 leading-snug tracking-tight">
+                      {r.name}
+                    </h3>
                     
                     {r.rating != null && (
-                      <div className="flex items-center gap-1.5 text-sm mb-3">
-                        <Star className="h-4 w-4 fill-brand-blue text-brand-blue" />
-                        <span className="font-semibold">{r.rating}</span>
-                        <span className="text-muted-foreground text-xs">({r.user_ratings_total ?? 0} reviews)</span>
+                      <div className="flex items-center gap-1.5 text-sm mb-4">
+                        <div className="flex items-center gap-1 bg-[#ffb545]/10 px-2 py-0.5 rounded-md">
+                          <Star className="h-3.5 w-3.5 fill-[#ffb545] text-[#ffb545]" />
+                          <span className="font-bold text-[#e29522]">{r.rating}</span>
+                        </div>
+                        <span className="text-muted-foreground text-xs font-medium">({r.user_ratings_total ?? 0} reviews)</span>
                       </div>
                     )}
                     
-                    <div className="mt-auto pt-4 border-t border-border/50 space-y-2">
+                    <div className="mt-auto pt-5 border-t border-border/50 space-y-3">
                       {r.formatted_address && (
-                        <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                          <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0 text-brand-blue/70" />
-                          <span className="line-clamp-2 leading-tight">{r.formatted_address}</span>
+                        <div className="flex items-start gap-2.5 text-sm text-muted-foreground">
+                          <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0 text-brand-blue/60" />
+                          <span className="line-clamp-2 leading-relaxed text-[13px] font-medium">{r.formatted_address}</span>
                         </div>
                       )}
                       {r.phone && (
-                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 text-brand-blue/70"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                           <span className="truncate">{r.phone}</span>
+                         <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
+                           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 text-brand-blue/60"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                           <span className="truncate font-bold text-[13px]">{r.phone}</span>
                          </div>
                       )}
                     </div>

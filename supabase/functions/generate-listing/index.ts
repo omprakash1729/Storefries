@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
   try {
     if (!PLACES_KEY) throw new Error("GOOGLE_PLACES_API_KEY missing");
 
-    const { url } = await req.json();
+    const { url, userId } = await req.json();
     if (!url || typeof url !== "string") {
       return new Response(JSON.stringify({ error: "Missing url" }), {
         status: 400,
@@ -246,6 +246,7 @@ Deno.serve(async (req) => {
       google_maps_url: details.googleMapsUri ?? null,
       raw: details,
       posts: gmbData.posts,
+      user_id: userId || null,
     };
 
     const { error: insertErr } = await supabase.from("listings").insert(row);

@@ -517,7 +517,7 @@ const ListingPage = () => {
 
           <div className="absolute bottom-0 left-0 w-full">
             <div className="container pb-6 md:pb-10 flex flex-col items-start gap-1">
-              <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-gray-900 to-gray-600 block pb-1 text-left tracking-tight w-full">
+              <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 block pb-1 text-left tracking-tight w-full">
                 {listing.name}
               </h1>
               
