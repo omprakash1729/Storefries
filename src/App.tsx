@@ -22,23 +22,35 @@ const AppContent = () => {
 
   useEffect(() => {
     const hostname = window.location.hostname;
-    const parts = hostname.split('.');
     
-    // Ignore www prefix if present
-    if (parts[0] === 'www') {
-      parts.shift();
-    }
+    // The main domains where the dashboard should load
+    const mainDomains = [
+      'localhost', 
+      'storefries.vercel.app', 
+      'www.storefries.vercel.app'
+      // Note: Add future custom domains (like storefries.com) here
+    ];
 
-    // Check for localhost subdomains (e.g., john.localhost)
-    if (parts.length >= 2 && parts[parts.length - 1] === 'localhost') {
-       if (parts[0] !== 'localhost') {
-           setSubdomain(parts[0]);
-       }
-    } 
-    // Check for production subdomains (e.g., john.storefries.com)
-    // Assumes base domain is 2 parts (storefries.com), so 3 parts means subdomain
-    else if (parts.length >= 3) {
-       setSubdomain(parts[0]);
+    if (mainDomains.includes(hostname)) {
+      setSubdomain(null);
+    } else {
+      const parts = hostname.split('.');
+      
+      // Ignore www prefix if present
+      if (parts[0] === 'www') {
+        parts.shift();
+      }
+
+      // Check for localhost subdomains (e.g., john.localhost)
+      if (parts.length >= 2 && parts[parts.length - 1] === 'localhost') {
+         if (parts[0] !== 'localhost') {
+             setSubdomain(parts[0]);
+         }
+      } 
+      // Check for production subdomains (e.g., john.storefries.com)
+      else if (parts.length >= 3) {
+         setSubdomain(parts[0]);
+      }
     }
     
     setIsChecking(false);
