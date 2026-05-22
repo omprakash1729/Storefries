@@ -5,6 +5,7 @@ import { SiteHeader, SiteFooter } from "@/components/SiteChrome";
 import { Search, Globe, Zap, BarChart3, Users, MessageSquare, Share2, Target, ShieldCheck, TrendingUp, Quote, CheckCircle2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { SoftAurora } from "@/components/SoftAurora";
+import { SplashCursor } from "@/components/SplashCursor";
 
 const fadeInUp = {
   hidden: { opacity: 0, y: 40 },
@@ -24,6 +25,34 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col relative overflow-hidden text-foreground transition-colors duration-300">
+      {/* Interactive WebGL Splash Cursor trailing effect */}
+      <div style={{ width: '1080px', height: '1080px', position: 'relative', display: 'none' }}>
+        <SplashCursor
+          SIM_RESOLUTION={128}
+          DYE_RESOLUTION={1440}
+          DENSITY_DISSIPATION={3.5}
+          VELOCITY_DISSIPATION={2}
+          PRESSURE={0.1}
+          CURL={3}
+          SPLAT_RADIUS={0.2}
+          SPLAT_FORCE={6000}
+          COLOR_UPDATE_SPEED={10}
+        />
+      </div>
+      
+      {/* Standalone global SplashCursor overlay to ensure it tracks across the full viewport seamlessly */}
+      <SplashCursor
+        SIM_RESOLUTION={128}
+        DYE_RESOLUTION={1440}
+        DENSITY_DISSIPATION={3.5}
+        VELOCITY_DISSIPATION={2}
+        PRESSURE={0.1}
+        CURL={3}
+        SPLAT_RADIUS={0.2}
+        SPLAT_FORCE={6000}
+        COLOR_UPDATE_SPEED={10}
+      />
+
       {/* Aurora Background */}
       <div className="absolute inset-0 z-0 pointer-events-none">
         <SoftAurora
@@ -52,23 +81,23 @@ const Index = () => {
       <main className="flex-1">
         {/* Hero */}
         {/* Hero */}
-        <motion.section 
+        <motion.section
           initial="hidden" animate="visible" variants={staggerContainer}
-          className="container py-24 md:py-32 text-center relative z-10"
+          className="container pt-20 pb-8 md:pt-28 md:pb-12 text-center relative z-10"
         >
           <motion.div variants={fadeInUp} className="inline-flex items-center rounded-full border border-border/50 dark:border-white/10 bg-secondary/80 dark:bg-white/5 backdrop-blur-md px-4 py-1.5 text-xs font-semibold text-foreground mb-8 shadow-sm dark:shadow-[0_0_15px_rgba(110,219,72,0.1)]">
             <span>Powered by Storefries for SMB and early stage business</span>
           </motion.div>
-          
+
           <motion.h1 variants={fadeInUp} className="text-5xl md:text-7xl font-extrabold mb-6 tracking-tight text-foreground dark:bg-gradient-to-r dark:from-white dark:via-white dark:to-white/60 dark:bg-clip-text dark:text-transparent">
             Automate your local <br className="hidden md:block" /> marketing presence
           </motion.h1>
-          
+
           <motion.p variants={fadeInUp} className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-12 font-medium relative z-20">
             Paste a Google Maps link and generate a high-converting, SEO-friendly landing page instantly. No code required.
           </motion.p>
 
-          <motion.div variants={fadeInUp} className="max-w-2xl mx-auto flex flex-col sm:flex-row justify-center gap-3 relative z-20 mb-20">
+          <motion.div variants={fadeInUp} className="max-w-2xl mx-auto flex flex-col sm:flex-row justify-center gap-3 relative z-20 mb-6">
             <Button onClick={() => navigate("/generate")} className="h-14 px-12 rounded-xl font-bold text-lg btn-gradient border-0 text-white shadow-xl hover:scale-105 transition-transform duration-300">
               Get Started
             </Button>
@@ -78,9 +107,9 @@ const Index = () => {
         </motion.section>
 
         {/* How it works */}
-        <motion.section 
+        <motion.section
           initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={staggerContainer}
-          className="container pb-24 relative z-10 mt-20"
+          className="container pb-24 relative z-10 mt-4 md:mt-8"
         >
           <div className="grid gap-6 md:grid-cols-3">
             {[
@@ -104,7 +133,7 @@ const Index = () => {
         </motion.section>
 
         {/* About Storefries */}
-        <motion.section 
+        <motion.section
           initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={fadeInUp}
           className="container pb-24 relative z-10"
         >
@@ -173,7 +202,7 @@ const Index = () => {
         </section>
 
         {/* Testimonials */}
-        <motion.section 
+        <motion.section
           initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={staggerContainer}
           className="container pb-32 relative z-10"
         >

@@ -105,9 +105,9 @@
     @apply border-border;
   }
 
-  html, body {
+  html, body, button, input, optgroup, select, textarea {
     @apply bg-background text-foreground;
-    font-family: 'Montserrat', system-ui, -apple-system, sans-serif;
+    font-family: 'Montserrat', system-ui, -apple-system, sans-serif !important;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
 

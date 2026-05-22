@@ -41,7 +41,7 @@ function extractPlaceIdFromUrl(url: string): string | null {
 
 function extractQueryFromUrl(url: string): { query?: string; lat?: number; lng?: number } {
   // /place/<NAME>/@lat,lng,
-  const placeMatch = url.match(/\/place\/([^\/]+)/);
+  const placeMatch = url.match(/\/place\/([^/]+)/);
   const atMatch = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
   let query: string | undefined;
   if (placeMatch) {
@@ -132,7 +132,7 @@ async function fetchGmbData(name: string, address: string) {
     const posts = postsJson.posts.map((post: any) => ({
       title: post.title,
       content: post.description || post.snippet,
-      photoUri: post.thumbnails?.[0] || post.thumbnail,
+      photoUri: post.thumbnails?.[0] || post.thumbnail || post.thumbnail_url || post.image_url || post.media?.[0]?.thumbnail || post.media?.[0]?.url || post.images?.[0] || null,
       publishTime: post.posted_at_text || post.date,
       callToAction: post.online_link ? {
         url: post.online_link || post.link,
@@ -191,11 +191,18 @@ Deno.serve(async (req) => {
     // Return existing if present
     const { data: existing } = await supabase
       .from("listings")
-      .select("slug")
+      .select("slug, user_id")
       .eq("place_id", placeId)
       .maybeSingle();
 
     if (existing) {
+      if (!existing.user_id && userId) {
+        console.log(`Claiming unclaimed listing ${existing.slug} for user ${userId}`);
+        await supabase
+          .from("listings")
+          .update({ user_id: userId })
+          .eq("place_id", placeId);
+      }
       return new Response(JSON.stringify({ slug: existing.slug, cached: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

@@ -166,7 +166,7 @@ const Listings = () => {
   };
 
   const cleanNameFromLocation = (name: string, address: string | null) => {
-    let rawClean = name.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    const rawClean = name.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
     if (!address) return rawClean;
     
     const addressLower = address.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ');

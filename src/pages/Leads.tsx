@@ -21,6 +21,7 @@ interface Lead {
   phone: string | null;
   company: string;
   created_at: string;
+  google_maps_url?: string | null;
 }
 
 const Leads = () => {
@@ -90,12 +91,13 @@ const Leads = () => {
           ) : (
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader>
+                 <TableHeader>
                   <TableRow className="bg-secondary/50 hover:bg-secondary/50">
                     <TableHead className="w-[200px]">Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Company</TableHead>
                     <TableHead>Phone</TableHead>
+                    <TableHead>Target Page</TableHead>
                     <TableHead className="text-right">Date Captured</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -106,6 +108,21 @@ const Leads = () => {
                       <TableCell>{lead.email}</TableCell>
                       <TableCell>{lead.company}</TableCell>
                       <TableCell>{lead.phone || <span className="text-muted-foreground italic">Not provided</span>}</TableCell>
+                      <TableCell>
+                        {lead.google_maps_url ? (
+                          <a 
+                            href={lead.google_maps_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="text-brand-blue hover:underline text-xs truncate max-w-[200px] block"
+                            title={lead.google_maps_url}
+                          >
+                            {lead.google_maps_url.replace(/^https?:\/\/(www\.)?/, '')}
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground italic">None</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right text-muted-foreground">
                         {lead.created_at ? format(new Date(lead.created_at), 'MMM d, yyyy h:mm a') : 'Unknown'}
                       </TableCell>

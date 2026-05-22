@@ -1,12 +1,16 @@
 import { useEffect, useState, useRef } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Seo } from "@/components/Seo";
 import { SiteHeader, SiteFooter } from "@/components/SiteChrome";
 import { Button } from "@/components/ui/button";
 import { photoUrl } from "@/lib/photo";
 import { getBestCategory } from "@/lib/utils";
-import { Star, MapPin, Phone, Globe, Clock, Tag, Navigation, MessageCircle, ExternalLink, Heart, Send, Bookmark, Facebook, Instagram, Twitter, Youtube, Linkedin } from "lucide-react";
+import { toast } from "sonner";
+import { Star, MapPin, Phone, Globe, Clock, Tag, Navigation, MessageCircle, ExternalLink, Heart, Send, Bookmark, Facebook, Instagram, Twitter, Youtube, Linkedin, Mail, Key, Chrome, Loader2, UserPlus, LogIn } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 
 interface Listing {
   id: string;
@@ -55,10 +59,40 @@ const getCityOrBranch = (address: string | null): string => {
   return parts[1] || parts[0] || "Verified Location";
 };
 
-const ListingPage = () => {
-  const { slug } = useParams();
+const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
+  const params = useParams();
+  const slug = subdomainSlug || params.slug;
+  const navigate = useNavigate();
   const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [publishing, setPublishing] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signup");
+  const [modalPassword, setModalPassword] = useState("");
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalForm, setModalForm] = useState({
+    name: "",
+    email: "",
+    company: "",
+    phone: "",
+  });
+
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setCurrentUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isHoveringGallery, setIsHoveringGallery] = useState(false);
   const postsScrollRef = useRef<HTMLDivElement>(null);
@@ -327,7 +361,9 @@ const ListingPage = () => {
             for (const key in obj) {
               try {
                 scanForSocialUrls(obj[key]);
-              } catch (e) {}
+              } catch (e) {
+                // ignore
+              }
             }
           }
         }
@@ -358,7 +394,7 @@ const ListingPage = () => {
             const mapped = postsJson.posts.map((post: any) => ({
               title: post.title,
               content: post.description || post.snippet,
-              photoUri: post.thumbnails?.[0] || post.thumbnail,
+              photoUri: post.thumbnails?.[0] || post.thumbnail || post.thumbnail_url || post.image_url || post.media?.[0]?.thumbnail || post.media?.[0]?.url || post.images?.[0] || null,
               publishTime: post.posted_at_text || post.date,
               callToAction: post.online_link ? {
                 url: post.online_link || post.link,
@@ -377,6 +413,89 @@ const ListingPage = () => {
       fetchLiveData();
     }
   }, [listing]);
+
+  // Handle post-login redirection and listing claiming
+  useEffect(() => {
+    const processPendingClaim = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const pendingLeadStr = localStorage.getItem("storefries_pending_lead");
+      const pendingUrl = localStorage.getItem("storefries_pending_url");
+
+      if (!pendingLeadStr && !pendingUrl) return;
+
+      try {
+        if (pendingLeadStr) {
+          const leadData = JSON.parse(pendingLeadStr);
+          console.log("Processing pending lead claim after sign in:", leadData);
+
+          // Save lead details
+          const leadEmail = leadData.email || session.user.email;
+          if (leadEmail) {
+            const { error: leadErr } = await supabase.from("leads").insert([{
+              name: leadData.name,
+              email: leadEmail,
+              phone: leadData.phone || null,
+              company: leadData.company,
+              google_maps_url: leadData.google_maps_url,
+              user_id: session.user.id
+            }]);
+            if (leadErr) {
+              console.error("Lead saving error in post-signin:", leadErr);
+            }
+          }
+
+          // Claim Listing
+          const { error: claimErr } = await supabase.functions.invoke("generate-listing", {
+            body: { url: leadData.google_maps_url, userId: session.user.id },
+          });
+          if (claimErr) throw claimErr;
+
+          setListing(prev => prev ? { ...prev, user_id: session.user.id } : null);
+          toast.success("Page successfully published to your account!");
+        } else if (pendingUrl) {
+          console.log("Processing pending publish claim after sign in:", pendingUrl);
+
+          // Save lead details for existing user
+          const metadata = session.user.user_metadata || {};
+          const leadName = metadata.name || metadata.full_name || session.user.email || "Unknown";
+          const leadCompany = metadata.company || "Not Specified";
+          const leadPhone = metadata.phone || null;
+
+          const { error: leadErr } = await supabase.from("leads").insert([{
+            name: leadName,
+            email: session.user.email,
+            phone: leadPhone,
+            company: leadCompany,
+            user_id: session.user.id,
+            google_maps_url: pendingUrl
+          }]);
+          if (leadErr) console.error("Lead saving error for existing user:", leadErr);
+
+          // Claim Listing
+          const { error: claimErr } = await supabase.functions.invoke("generate-listing", {
+            body: { url: pendingUrl, userId: session.user.id },
+          });
+          if (claimErr) throw claimErr;
+
+          setListing(prev => prev ? { ...prev, user_id: session.user.id } : null);
+          toast.success("Premium landing page published successfully to your account!");
+        }
+      } catch (err: any) {
+        console.error("Error claiming listing post-signin:", err);
+        toast.error("Failed to complete publication after sign-in.");
+      } finally {
+        localStorage.removeItem("storefries_pending_lead");
+        localStorage.removeItem("storefries_pending_url");
+        localStorage.removeItem("storefries_redirect_back_url");
+      }
+    };
+
+    if (currentUser) {
+      processPendingClaim();
+    }
+  }, [currentUser]);
 
   if (loading) {
     return (
@@ -444,7 +563,10 @@ const ListingPage = () => {
 
   const mapsLink =
     listing.google_maps_url ??
-    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(listing.formatted_address ?? listing.name)}&query_place_id=${listing.place_id}`;
+    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(listing.formatted_address ?? listing.name)}&place_id=${listing.place_id}`;
+
+  const customizeText = `Hello! I would like to customize my page for ${listing?.name ?? ""} (${window.location.origin}${window.location.pathname})`;
+  const customizeWhatsappLink = `https://wa.me/916374392488?text=${encodeURIComponent(customizeText)}`;
 
   const embedSrc = `https://www.google.com/maps?q=${encodeURIComponent(
     listing.formatted_address ?? listing.name,
@@ -477,6 +599,261 @@ const ListingPage = () => {
     }
   };
 
+  const handleModalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!listing) return;
+
+    if (authMode === "signup" && (!modalForm.name || !modalForm.email || !modalForm.company || !modalPassword)) {
+      toast.error("Please fill in all required fields.");
+      return;
+    }
+
+    if (authMode === "signin" && (!modalForm.email || !modalPassword)) {
+      toast.error("Please fill in all required fields.");
+      return;
+    }
+
+    setModalLoading(true);
+    const mapsLink =
+      listing.google_maps_url ??
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(listing.formatted_address ?? listing.name)}&place_id=${listing.place_id}`;
+
+    // Cache details in localStorage depending on signin vs signup
+    if (authMode === "signup") {
+      localStorage.setItem(
+        "storefries_pending_lead",
+        JSON.stringify({
+          name: modalForm.name,
+          email: modalForm.email,
+          company: modalForm.company,
+          phone: modalForm.phone || "",
+          google_maps_url: mapsLink
+        })
+      );
+    } else {
+      localStorage.setItem("storefries_pending_url", mapsLink);
+    }
+
+    try {
+      let activeUser: any = null;
+
+      if (authMode === "signin") {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: modalForm.email,
+          password: modalPassword,
+        });
+        if (error) throw error;
+        activeUser = data.user;
+      } else {
+        // Sign Up with Developer Self-Healing Flow
+        const { data, error } = await supabase.auth.signUp({
+          email: modalForm.email,
+          password: modalPassword,
+        });
+        
+        if (error) {
+          throw error;
+        }
+
+        // Try signing in immediately
+        try {
+          const { data: signData, error: signError } = await supabase.auth.signInWithPassword({
+            email: modalForm.email,
+            password: modalPassword,
+          });
+          if (signError) {
+            if (signError.message?.toLowerCase().includes("email not confirmed") || 
+                signError.message?.toLowerCase().includes("confirmation")) {
+              toast.info(
+                "A verification email has been sent! Please click the confirmation link in your email. Once confirmed, you will be automatically logged in and this page will be published to your account.",
+                { duration: 10000 }
+              );
+              toast.error(
+                "Developer Hint: 'Email Confirmation' is active in Supabase. To log in instantly, run: UPDATE auth.users SET email_confirmed_at = NOW() WHERE email = '" + modalForm.email + "';",
+                { duration: 15000 }
+              );
+              setIsAuthModalOpen(false);
+              setModalLoading(false);
+              return;
+            }
+            throw signError;
+          }
+          activeUser = signData.user;
+        } catch (err: any) {
+          if (err.message?.toLowerCase().includes("email not confirmed") || 
+              err.message?.toLowerCase().includes("confirmation")) {
+            toast.info(
+              "A verification email has been sent! Please click the confirmation link in your email. Once confirmed, you will be automatically logged in and this page will be published to your account.",
+              { duration: 10000 }
+            );
+            toast.error(
+              "Developer Hint: 'Email Confirmation' is active in Supabase. To log in instantly, run: UPDATE auth.users SET email_confirmed_at = NOW() WHERE email = '" + modalForm.email + "';",
+              { duration: 15000 }
+            );
+            setIsAuthModalOpen(false);
+            setModalLoading(false);
+            return;
+          }
+          throw err;
+        }
+      }
+
+      if (!activeUser) {
+        throw new Error("Authentication failed. Please check your credentials.");
+      }
+
+      // Log Lead detail
+      const { error: leadErr } = await supabase.from('leads').insert([
+        {
+          name: modalForm.name,
+          email: modalForm.email,
+          phone: modalForm.phone || null,
+          company: modalForm.company,
+          user_id: activeUser.id,
+          google_maps_url: mapsLink
+        }
+      ]);
+
+      if (leadErr) {
+        console.error("Lead saving error:", leadErr);
+      }
+
+      // Claim Listing via generate-listing Edge Function
+      const { data: genData, error: genError } = await supabase.functions.invoke("generate-listing", {
+        body: { url: mapsLink, userId: activeUser.id },
+      });
+
+      if (genError) {
+        throw genError;
+      }
+
+      // Update local listing state to show it is now claimed/published!
+      setListing(prev => prev ? { ...prev, user_id: activeUser.id } : null);
+      setCurrentUser(activeUser);
+      setIsAuthModalOpen(false);
+      toast.success("Page successfully published to your account!");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to publish listing.");
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleGooglePublish = async () => {
+    if (!listing) return;
+
+    if (!modalForm.name || !modalForm.email || !modalForm.company) {
+      toast.error("Please fill in all required fields (Name, Email, Company) before signing in with Google.");
+      return;
+    }
+
+    const mapsLink =
+      listing.google_maps_url ??
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(listing.formatted_address ?? listing.name)}&place_id=${listing.place_id}`;
+
+    // Cache the lead details and maps link in localStorage so we can claim and log lead post-OAuth
+    localStorage.setItem(
+      "storefries_pending_lead",
+      JSON.stringify({
+        name: modalForm.name,
+        email: modalForm.email,
+        company: modalForm.company,
+        phone: modalForm.phone || "",
+        google_maps_url: mapsLink
+      })
+    );
+
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: window.location.href, // return back to this exact page!
+        },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      toast.error(err.message || "Failed to initiate Google sign-in.");
+    }
+  };
+
+  const handleDeleteListing = async () => {
+    if (!listing) return;
+    if (!confirm("Are you sure you want to delete this listing page? This action cannot be undone.")) {
+      return;
+    }
+
+    setPublishing(true);
+    try {
+      const { error } = await supabase
+        .from("listings")
+        .delete()
+        .eq("id", listing.id);
+
+      if (error) throw error;
+
+      toast.success("Listing page deleted successfully.");
+      navigate("/listings");
+    } catch (err: any) {
+      console.error("Error deleting listing:", err);
+      toast.error(err.message || "Failed to delete listing.");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!listing) return;
+
+    const mapsLink =
+      listing.google_maps_url ??
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(listing.formatted_address ?? listing.name)}&place_id=${listing.place_id}`;
+
+    // If not logged in, redirect to sign-in page to collect details
+    if (!currentUser) {
+      localStorage.setItem("storefries_redirect_back_url", window.location.pathname);
+      localStorage.setItem("storefries_pending_url", mapsLink);
+      localStorage.setItem("storefries_pending_name", listing.name);
+      
+      toast.info("Please sign in or sign up to publish this page.");
+      navigate("/signin");
+      return;
+    }
+
+    // Otherwise, claim it directly!
+    setPublishing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-listing", {
+        body: { url: mapsLink, userId: currentUser.id },
+      });
+      if (error) throw error;
+      
+      const metadata = currentUser.user_metadata || {};
+      const leadName = metadata.name || metadata.full_name || currentUser.email || "Unknown";
+      const leadCompany = metadata.company || "Not Specified";
+      const leadPhone = metadata.phone || null;
+
+      const { error: leadErr } = await supabase.from("leads").insert([{
+        name: leadName,
+        email: currentUser.email,
+        phone: leadPhone,
+        company: leadCompany,
+        user_id: currentUser.id,
+        google_maps_url: mapsLink
+      }]);
+      if (leadErr) console.error("Lead saving error:", leadErr);
+
+      // Update local state user_id
+      setListing(prev => prev ? { ...prev, user_id: currentUser.id } : null);
+      toast.success("Premium landing page published successfully to your account!");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to publish listing.");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Seo
@@ -488,6 +865,55 @@ const ListingPage = () => {
         image={heroPhoto ? photoUrl(heroPhoto.name, 1200) : undefined}
         jsonLd={jsonLd}
       />
+      {listing.user_id && currentUser && (listing.user_id === currentUser.id || currentUser.email === "prakash04082002@gmail.com") && (
+        <div className="bg-neutral-900 dark:bg-neutral-950 text-white py-3.5 px-4 text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md relative z-50 transition-all duration-300">
+          <div className="flex items-center gap-2.5 mx-auto sm:mx-0">
+            <span className="flex h-2 w-2 relative">
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <p className="text-xs md:text-sm font-semibold tracking-wide">
+              You own this premium page. You have administrative access.
+            </p>
+          </div>
+          <Button 
+            onClick={handleDeleteListing}
+            disabled={publishing}
+            className="h-8 px-6 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-full shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-0 flex-shrink-0 mx-auto sm:mx-0 flex items-center gap-1.5"
+          >
+            Delete page
+          </Button>
+        </div>
+      )}
+      {!listing.user_id && (
+        <div className="bg-gradient-to-r from-brand-blue via-purple-600 to-brand-green text-white py-3.5 px-4 text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md relative z-50 transition-all duration-300">
+          <div className="flex items-center gap-2.5 mx-auto sm:mx-0">
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+            </span>
+            <p className="text-xs md:text-sm font-semibold tracking-wide">
+              {currentUser ? (
+                <>This premium page is currently unclaimed. Claim and publish it to your account!</>
+              ) : (
+                <>You are viewing a live preview of <span className="font-extrabold">{listing.name}</span>. Claim and publish this page now!</>
+              )}
+            </p>
+          </div>
+          <Button 
+            onClick={handlePublish}
+            disabled={publishing}
+            className="h-8 px-6 bg-white hover:bg-neutral-100 text-brand-blue font-extrabold text-xs rounded-full shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-0 flex-shrink-0 mx-auto sm:mx-0 flex items-center gap-1.5"
+          >
+            {publishing ? (
+              <>Claiming...</>
+            ) : currentUser ? (
+              <>Claim page</>
+            ) : (
+              <>Publish page</>
+            )}
+          </Button>
+        </div>
+      )}
       <SiteHeader />
 
       <main className="flex-1 w-full overflow-x-hidden">
@@ -568,6 +994,19 @@ const ListingPage = () => {
 
             {/* Quick Actions */}
             <div className="flex flex-wrap gap-2 flex-shrink-0">
+              {!listing.user_id && (
+                <Button 
+                  onClick={handlePublish}
+                  disabled={publishing}
+                  className="h-9 px-5 rounded-full btn-gradient border-0 text-white font-extrabold text-xs shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-1.5"
+                >
+                  {publishing ? (
+                    <>Publishing...</>
+                  ) : (
+                    <>Publish page</>
+                  )}
+                </Button>
+              )}
               {listing.phone && (
                 <Button asChild size="icon" title="Call" className="h-9 w-9 rounded-full bg-[#0073c8] hover:bg-[#0065ad] text-white border-0 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 font-semibold">
                   <a href={`tel:${listing.phone}`}><Phone className="h-4 w-4" /></a>
@@ -629,6 +1068,26 @@ const ListingPage = () => {
         </div>
 
         <div className="container py-12 md:py-16 space-y-16 md:space-y-24">
+
+          {listing.user_id === currentUser?.id && (
+            <div className="relative overflow-hidden rounded-3xl border border-brand-blue/30 bg-gradient-to-br from-brand-blue/10 via-purple-600/5 to-background p-6 md:p-8 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 animate-in fade-in duration-300">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-brand-blue/10 to-purple-600/10 rounded-full blur-3xl -z-10 pointer-events-none" />
+              <div className="space-y-2 flex-1 text-center md:text-left">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-blue/10 text-brand-blue border border-brand-blue/20 text-xs font-bold uppercase tracking-wider">
+                  <Star className="h-3 w-3 fill-current" /> Verified Owner Panel
+                </div>
+                <h3 className="text-xl md:text-2xl font-extrabold tracking-tight">You have full access to this page!</h3>
+                <p className="text-sm text-muted-foreground max-w-xl">
+                  As the verified owner, you can fully customize this page (change colors, rewrite details, update gallery, manage posts/reviews, or link your custom domain).
+                </p>
+              </div>
+              <Button asChild className="bg-[#25D366] hover:bg-[#20BA5A] text-white hover:scale-102 hover:-translate-y-0.5 active:scale-98 shadow-md hover:shadow-lg rounded-2xl h-12 px-6 font-extrabold transition-all duration-200 border-0 flex-shrink-0 flex items-center gap-2">
+                <a href={customizeWhatsappLink} target="_blank" rel="noopener noreferrer">
+                  <MessageCircle className="h-5 w-5 fill-current" /> Contact Us to Customize
+                </a>
+              </Button>
+            </div>
+          )}
           
           {/* Overview Section */}
           <section id="overview" className="scroll-mt-24">
@@ -718,6 +1177,16 @@ const ListingPage = () => {
                       </ul>
                     </div>
                   )}
+                  {listing.user_id === currentUser?.id && (
+                    <div className="pt-4 mt-4 border-t border-border/50 space-y-2">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground font-bold">Owner Controls</p>
+                      <Button asChild className="w-full bg-[#25D366] hover:bg-[#20BA5A] text-white font-bold rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all text-xs flex items-center justify-center gap-1.5 py-2.5 h-10 border-0">
+                        <a href={customizeWhatsappLink} target="_blank" rel="noopener noreferrer">
+                          <MessageCircle className="h-4 w-4 fill-current" /> Customize Page
+                        </a>
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -787,7 +1256,7 @@ const ListingPage = () => {
                         <article className="h-full bg-background border border-border shadow-sm rounded-xl overflow-hidden flex flex-col hover:shadow-md transition-shadow">
                           <div className="aspect-square w-full bg-white overflow-hidden flex items-center justify-center relative border-b border-border/50">
                             {post.photoUri ? (
-                              <img src={post.photoUri} alt={post.title || "Post image"} className="w-full h-full object-contain group-hover/post:scale-105 transition-transform duration-500" loading="lazy" />
+                              <img src={post.photoUri} alt={post.title || "Post image"} referrerPolicy="no-referrer" className="w-full h-full object-contain group-hover/post:scale-105 transition-transform duration-500" loading="lazy" />
                             ) : (
                               <div className="text-muted-foreground/30 flex flex-col items-center">
                                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -1047,6 +1516,7 @@ const ListingPage = () => {
                     <img 
                       src={lightboxState.items[lightboxState.index].src} 
                       alt={lightboxState.items[lightboxState.index].caption || "Post preview"} 
+                      referrerPolicy="no-referrer"
                       className="max-w-full h-auto max-h-[50vh] md:max-h-[80vh] object-contain rounded-md" 
                     />
                   </div>
@@ -1139,6 +1609,7 @@ const ListingPage = () => {
                     <img 
                       src={lightboxState.items[lightboxState.index].src} 
                       alt={lightboxState.items[lightboxState.index].caption || "Media preview"} 
+                      referrerPolicy="no-referrer"
                       className="max-w-full h-auto max-h-[80vh] object-contain rounded-lg shadow-[0_0_40px_rgba(0,119,255,0.25)] ring-1 ring-white/10" 
                     />
                   </div>
@@ -1159,6 +1630,8 @@ const ListingPage = () => {
           </div>
         </div>
       )}
+
+
     </div>
   );
 };
