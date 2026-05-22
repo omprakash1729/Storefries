@@ -157,8 +157,21 @@ const SignIn = () => {
           user_id: data.user?.id || null,
           google_maps_url: pendingUrl || null
         }]);
+        
         if (leadErr) {
           console.error("Direct lead insert error:", leadErr);
+        }
+
+        // If Supabase automatically logs the user in (Email confirmation is OFF)
+        if (data.session) {
+          toast.success("Account created successfully! Redirecting...");
+          const redirectBack = localStorage.getItem("storefries_redirect_back_url");
+          if (redirectBack) {
+            navigate(redirectBack);
+          } else {
+            navigate("/generate");
+          }
+          return;
         }
 
         toast.success("Successfully registered! You can now log in.");
@@ -166,12 +179,14 @@ const SignIn = () => {
       } else {
         // Safe Developer Auto-Signup / Self-Healing Fallback
         let signInErr: any = null;
+        let signInData: any = null;
         try {
-          const { error } = await supabase.auth.signInWithPassword({
+          const { data, error } = await supabase.auth.signInWithPassword({
             email,
             password,
           });
           if (error) signInErr = error;
+          else signInData = data;
         } catch (err: any) {
           signInErr = err;
         }
@@ -189,7 +204,7 @@ const SignIn = () => {
           if (signUpError) throw signUpError;
 
           // Re-attempt sign in now that it is registered
-          const { error: reSignInError } = await supabase.auth.signInWithPassword({
+          const { data: reSignInData, error: reSignInError } = await supabase.auth.signInWithPassword({
             email,
             password,
           });
@@ -206,21 +221,26 @@ const SignIn = () => {
             throw reSignInError;
           }
           
+          signInData = reSignInData;
           toast.success("Developer account auto-created and logged in!");
         } else if (signInErr) {
           if (signInErr.message === "Invalid login credentials") {
-            throw new Error("Invalid login credentials. If you haven't created an account yet, please click 'Sign Up now' below.");
+            // Automatically switch them to the Sign Up tab if they likely don't have an account
+            setIsSignUp(true);
+            throw new Error("We couldn't find an account with that password. If you are new, please fill in your details to Sign Up!");
           }
           throw signInErr;
         } else {
           toast.success("Welcome back! Redirecting...");
         }
 
-        const redirectBack = localStorage.getItem("storefries_redirect_back_url");
-        if (redirectBack) {
-          navigate(redirectBack);
-        } else {
-          navigate("/generate");
+        if (signInData?.session) {
+          const redirectBack = localStorage.getItem("storefries_redirect_back_url");
+          if (redirectBack) {
+            navigate(redirectBack);
+          } else {
+            navigate("/generate");
+          }
         }
       }
     } catch (error: any) {
