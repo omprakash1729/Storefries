@@ -337,7 +337,7 @@ const Listings = () => {
       <main className="flex-1 container py-16 relative z-10">
         {!selectedFolder ? (
           <>
-            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-16 pb-8 border-b border-border/60">
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-16 pb-8">
               <div>
                 <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4 text-foreground bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text">
                   Browse Directory
@@ -375,7 +375,7 @@ const Listings = () => {
             </div>
           </>
         ) : (
-          <div className="mb-16 pb-8 border-b border-border/60">
+          <div className="mb-16 pb-8">
             <button 
               className="inline-flex items-center gap-2 text-sm font-bold text-brand-blue hover:text-brand-blue/80 mb-6 py-2 group transition-all duration-200 bg-brand-blue/5 px-4 rounded-full" 
               onClick={() => setSelectedFolder(null)}
@@ -492,7 +492,7 @@ const Listings = () => {
                     )}
 
                     {/* Distinct Pill Badge */}
-                    <span className="bg-brand-blue/5 text-brand-blue text-[10px] font-extrabold uppercase tracking-wider px-3 py-1.5 rounded-full border border-brand-blue/10 group-hover:bg-brand-blue group-hover:text-white group-hover:border-transparent transition-all duration-300">
+                    <span className="whitespace-nowrap bg-brand-blue/5 text-brand-blue text-[10px] font-extrabold uppercase tracking-wider px-3 py-1.5 rounded-full border border-brand-blue/10 group-hover:bg-brand-blue group-hover:text-white group-hover:border-transparent transition-all duration-300">
                       {items.length} {items.length === 1 ? 'Location' : 'Locations'}
                     </span>
                   </div>
