@@ -270,6 +270,29 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
         console.log("[SERP] Knowledge Graph Detected:", !!knowledgeGraph);
         console.log("[SERP] Discovered Profiles Found:", knowledgeGraph?.profiles?.length || 0);
 
+        // Debugging logs to help us find the exact paragraph if it's hidden elsewhere
+        console.log("[SERP] Full Maps API Response:", mapsJson);
+        console.log("[SERP] Full Google API Response:", googleJson);
+
+        // Extract "From the business" description if available
+        let newDesc = null;
+        if (placeResult?.description) {
+          newDesc = placeResult.description;
+        } else if (knowledgeGraph?.merchant_description) {
+          newDesc = knowledgeGraph.merchant_description;
+        } else if (knowledgeGraph?.description) {
+          newDesc = knowledgeGraph.description;
+        } else if (knowledgeGraph?.detailed_description?.article_body) {
+          newDesc = knowledgeGraph.detailed_description.article_body;
+        }
+        
+        if (newDesc) {
+           // Remove any leading or trailing double quotes that might come from the API
+           const cleanDesc = newDesc.replace(/^"|"$/g, '').trim();
+           console.log("[SERP] Supplementing description:", cleanDesc);
+           setLiveDescription(cleanDesc);
+        }
+
         // Augment listing with missing phone from knowledge graph if found
         if (!listing.phone && knowledgeGraph?.phone) {
           console.log("[SERP] Supplementing phone number from Knowledge Graph:", knowledgeGraph.phone);
@@ -955,20 +978,6 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
                     <span className="text-muted-foreground">({listing.user_ratings_total ?? 0} reviews)</span>
                   </div>
                 )}
-                {listing.formatted_address && (
-                  <address 
-                    onClick={() => setShowFullAddress(!showFullAddress)}
-                    className="not-italic flex items-center gap-1.5 text-foreground/90 bg-background/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-border/50 cursor-pointer hover:bg-background/80 transition-all max-w-full"
-                  >
-                    <MapPin className="h-4 w-4 flex-shrink-0 text-brand-blue" />
-                    <span className={`${showFullAddress ? "whitespace-normal break-words" : "truncate max-w-[200px] sm:max-w-md md:max-w-xl"} text-xs md:text-sm`}>
-                      {listing.formatted_address}
-                    </span>
-                    <span className="text-[10px] text-brand-blue font-bold ml-1 flex-shrink-0">
-                      {showFullAddress ? "Show Less" : "See More"}
-                    </span>
-                  </address>
-                )}
               </div>
             </div>
           </div>
@@ -987,8 +996,8 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
               {reviews.length > 0 && (
                 <a href="#reviews" className="whitespace-nowrap px-4 py-2 rounded-full hover:bg-secondary text-foreground transition-colors">Reviews</a>
               )}
-              <Link to="/" className="whitespace-nowrap px-4 py-2 rounded-full hover:bg-secondary text-brand-blue transition-colors flex items-center gap-1">
-                Find More Places <ExternalLink className="h-3 w-3" />
+              <Link to={`/listings?folder=${encodeURIComponent(listing.name)}`} className="whitespace-nowrap px-4 py-2 rounded-full hover:bg-secondary text-brand-blue transition-colors flex items-center gap-1">
+                Find More Branches <ExternalLink className="h-3 w-3" />
               </Link>
             </nav>
 
@@ -1140,9 +1149,18 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
                 </h3>
                 <div className="space-y-4">
                   {listing.formatted_address && (
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1 font-semibold">Address</p>
-                      <p className="text-sm font-medium leading-tight">{listing.formatted_address}</p>
+                    <div className="group relative">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1 font-semibold flex justify-between items-center">
+                        Address
+                      </p>
+                      <div className="flex items-start justify-between gap-3 mt-1">
+                        <p className="text-sm font-medium leading-tight flex-1">{listing.formatted_address}</p>
+                        <Button asChild size="icon" className="h-10 w-10 rounded-full flex-shrink-0 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 border-0">
+                          <a href={mapsLink} target="_blank" rel="noopener noreferrer" title="Get Directions">
+                            <Navigation className="h-4 w-4" />
+                          </a>
+                        </Button>
+                      </div>
                     </div>
                   )}
                   {listing.phone && (

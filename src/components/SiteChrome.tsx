@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { LogOut, Menu } from "lucide-react";
+import { LogOut, Menu, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 import { toast } from "sonner";
 import { ThemeToggle } from "./ThemeToggle";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -233,10 +233,55 @@ export const SiteHeader = () => {
 };
 
 export const SiteFooter = () => (
-  <footer className="border-t border-border bg-background mt-16">
-    <div className="container py-8 text-sm text-muted-foreground flex flex-col sm:flex-row justify-between gap-2">
-      <p>&copy; {new Date().getFullYear()} Storefries Listing</p>
-      <p>Generate beautiful business landing pages from Google Maps.</p>
+  <footer className="border-t border-border mt-16 bg-[#052749] text-white relative z-10">
+    <div className="container mx-auto px-4 py-12">
+      <div className="flex flex-col md:flex-row justify-between items-center gap-8">
+        
+        {/* Left: Brand & Tagline */}
+        <div className="flex flex-col items-center md:items-start text-center md:text-left gap-3">
+          <div className="flex items-center gap-2.5">
+            <img src="/favicon.png" alt="Storefries Icon" className="h-8 w-auto object-contain" />
+            <h3 className="text-xl font-extrabold tracking-tight text-white">Storefries Listing</h3>
+          </div>
+          <p className="text-sm text-white/70 max-w-sm">
+            Generate beautiful, interactive business landing pages directly from Google Maps.
+          </p>
+        </div>
+
+        {/* Center: Main App Link */}
+        <div className="flex items-center">
+          <a 
+            href="https://storefries.com/" 
+            target="_blank" 
+            rel="noreferrer" 
+            className="group flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-full text-sm font-semibold transition-all duration-300 shadow-sm border border-white/5"
+          >
+            Our other application: Storefries.com
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-70 group-hover:opacity-100 group-hover:translate-x-1 transition-all"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </a>
+        </div>
+
+        {/* Right: Socials */}
+        <div className="flex items-center gap-3">
+          <a href="https://www.facebook.com/people/Storefries/100077974131077/#" target="_blank" rel="noreferrer" className="p-2.5 rounded-full bg-white/5 hover:bg-white/15 text-white/80 hover:text-white transition-all duration-300">
+            <Facebook className="h-5 w-5" />
+          </a>
+          <a href="https://x.com/Storefries1" target="_blank" rel="noreferrer" className="p-2.5 rounded-full bg-white/5 hover:bg-white/15 text-white/80 hover:text-white transition-all duration-300">
+            <Twitter className="h-5 w-5" />
+          </a>
+          <a href="https://www.instagram.com/storefries/" target="_blank" rel="noreferrer" className="p-2.5 rounded-full bg-white/5 hover:bg-white/15 text-white/80 hover:text-white transition-all duration-300">
+            <Instagram className="h-5 w-5" />
+          </a>
+          <a href="https://in.linkedin.com/company/storefries" target="_blank" rel="noreferrer" className="p-2.5 rounded-full bg-white/5 hover:bg-white/15 text-white/80 hover:text-white transition-all duration-300">
+            <Linkedin className="h-5 w-5" />
+          </a>
+        </div>
+      </div>
+
+      {/* Bottom: Copyright */}
+      <div className="mt-12 pt-6 border-t border-white/10 flex flex-col md:flex-row items-center justify-between text-xs text-white/50">
+        <p>&copy; {new Date().getFullYear()} Storefries. All rights reserved.</p>
+      </div>
     </div>
   </footer>
 );

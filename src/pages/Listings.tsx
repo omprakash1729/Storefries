@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Seo } from "@/components/Seo";
 import { SiteHeader, SiteFooter } from "@/components/SiteChrome";
@@ -28,6 +28,10 @@ const Listings = () => {
   const [viewMode, setViewMode] = useState<"brand" | "category" | "location">("brand");
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const folderParam = searchParams.get("folder");
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -312,6 +316,27 @@ const Listings = () => {
       : groupedByBrand;
 
   const folders = Object.keys(activeGroups).sort();
+
+  useEffect(() => {
+    if (folderParam && folders.length > 0 && !selectedFolder) {
+      const cleanString = (str: string) => str.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+      const cleanFolderParam = cleanString(folderParam);
+
+      // Find exact match after cleaning
+      let match = folders.find(f => cleanString(f) === cleanFolderParam);
+      
+      if (!match) {
+        // Fallback to searching if folderParam starts with the folder name, or folder name starts with folderParam
+        match = folders.find(f => {
+          const cleanF = cleanString(f);
+          return cleanFolderParam.startsWith(cleanF) || cleanF.startsWith(cleanFolderParam);
+        });
+      }
+      if (match) {
+        setSelectedFolder(match);
+      }
+    }
+  }, [folderParam, folders, selectedFolder]);
 
   const getFolderIcon = () => {
     if (viewMode === "location") return MapPin;
