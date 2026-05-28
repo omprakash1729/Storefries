@@ -20,6 +20,12 @@ const GoogleLogo = () => (
   </svg>
 );
 
+const validatePhone = (phone: string): boolean => {
+  if (!phone) return true;
+  const phoneRegex = /^\+?[0-9\s\-\(\)]{7,20}$/;
+  return phoneRegex.test(phone);
+};
+
 const SignIn = () => {
   const navigate = useNavigate();
   const [isSignUp, setIsSignUp] = useState(false);
@@ -93,6 +99,11 @@ const SignIn = () => {
           return;
         }
 
+        if (phone && !validatePhone(phone)) {
+          toast.error("Please enter a valid phone number.");
+          return;
+        }
+
         // Cache lead details so they can be read post-login in processPendingClaim
         localStorage.setItem(
           "storefries_pending_lead",
@@ -131,6 +142,12 @@ const SignIn = () => {
       if (isSignUp) {
         if (!name || !company) {
           toast.error("Please enter your Name and Company Name.");
+          setLoading(false);
+          return;
+        }
+
+        if (phone && !validatePhone(phone)) {
+          toast.error("Please enter a valid phone number.");
           setLoading(false);
           return;
         }
@@ -370,6 +387,9 @@ const SignIn = () => {
                   </Label>
                   <Input
                     id="pub-phone"
+                    type="tel"
+                    pattern="^(\+?[0-9\s\-\(\)]{7,20})?$"
+                    title="Please enter a valid phone number (digits, spaces, hyphens, and optional + prefix)."
                     placeholder="+91 6374392488"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
@@ -445,6 +465,9 @@ const SignIn = () => {
                     </Label>
                     <Input
                       id="phone"
+                      type="tel"
+                      pattern="^(\+?[0-9\s\-\(\)]{7,20})?$"
+                      title="Please enter a valid phone number (digits, spaces, hyphens, and optional + prefix)."
                       placeholder="+91 6374392488"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}

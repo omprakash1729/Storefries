@@ -59,6 +59,12 @@ const getCityOrBranch = (address: string | null): string => {
   return parts[1] || parts[0] || "Verified Location";
 };
 
+const validatePhone = (phone: string): boolean => {
+  if (!phone) return true;
+  const phoneRegex = /^\+?[0-9\s\-\(\)]{7,20}$/;
+  return phoneRegex.test(phone);
+};
+
 const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
   const params = useParams();
   const slug = subdomainSlug || params.slug;
@@ -693,6 +699,11 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
 
     if (!customDomainForm.name || !customDomainForm.company) {
       toast.error("Please fill in all required fields (Name and Company).");
+      return;
+    }
+
+    if (customDomainForm.phone && !validatePhone(customDomainForm.phone)) {
+      toast.error("Please enter a valid phone number.");
       return;
     }
 
@@ -1708,6 +1719,9 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
                 <Label htmlFor="domain-phone" className="text-xs font-bold text-foreground/80">Phone</Label>
                 <Input
                   id="domain-phone"
+                  type="tel"
+                  pattern="^(\+?[0-9\s\-\(\)]{7,20})?$"
+                  title="Please enter a valid phone number (digits, spaces, hyphens, and optional + prefix)."
                   value={customDomainForm.phone}
                   onChange={(e) => setCustomDomainForm(prev => ({ ...prev, phone: e.target.value }))}
                   placeholder="+91..."
