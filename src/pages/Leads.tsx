@@ -35,7 +35,7 @@ const Leads = () => {
   const fetchLeads = async () => {
     try {
       const { data, error } = await supabase
-        .from('leads')
+        .from('leads' as any)
         .select('*')
         .order('created_at', { ascending: false });
 
@@ -43,7 +43,7 @@ const Leads = () => {
         throw error;
       }
 
-      setLeads(data || []);
+      setLeads((data as any) || []);
     } catch (err: any) {
       console.error("Error fetching leads:", err);
       if (err.code === '42P01') {

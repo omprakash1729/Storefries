@@ -68,16 +68,53 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<"signin" | "signup">("signup");
-  const [modalPassword, setModalPassword] = useState("");
-  const [modalLoading, setModalLoading] = useState(false);
-  const [modalForm, setModalForm] = useState({
+  const [customDomainOpen, setCustomDomainOpen] = useState(false);
+  const [customDomainLoading, setCustomDomainLoading] = useState(false);
+  const [customDomainForm, setCustomDomainForm] = useState({
     name: "",
     email: "",
     company: "",
     phone: "",
+    desiredDomain: "",
   });
+
+  // Fetch lead data to pre-populate custom domain request
+  useEffect(() => {
+    if (customDomainOpen && currentUser) {
+      const fetchLeadData = async () => {
+        try {
+          const { data, error } = await supabase
+            .from("leads")
+            .select("name, company, phone, email")
+            .eq("user_id", currentUser.id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (data) {
+            setCustomDomainForm({
+              name: data.name || currentUser.user_metadata?.name || currentUser.user_metadata?.full_name || "",
+              email: currentUser.email || "",
+              company: data.company || currentUser.user_metadata?.company || "",
+              phone: data.phone || currentUser.user_metadata?.phone || "",
+              desiredDomain: "",
+            });
+          } else {
+            setCustomDomainForm({
+              name: currentUser.user_metadata?.name || currentUser.user_metadata?.full_name || "",
+              email: currentUser.email || "",
+              company: currentUser.user_metadata?.company || "",
+              phone: currentUser.user_metadata?.phone || "",
+              desiredDomain: "",
+            });
+          }
+        } catch (err) {
+          console.error("Error pre-populating domain request form:", err);
+        }
+      };
+      fetchLeadData();
+    }
+  }, [customDomainOpen, currentUser]);
 
 
   useEffect(() => {
@@ -102,7 +139,7 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
   const [liveAbout, setLiveAbout] = useState<any[] | null>(null);
   const [liveServiceOptions, setLiveServiceOptions] = useState<any | null>(null);
   const [liveDescription, setLiveDescription] = useState<string | null>(null);
-  const hasFetchedRef = useRef(false);
+  const hasFetchedRef = useRef<string | null>(null);
   const [lightboxState, setLightboxState] = useState<{ 
     index: number; 
     items: Array<{ 
@@ -196,8 +233,8 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
   useEffect(() => {
     // Dynamically fetch tags, social profiles, and posts from SerpApi if not fully populated
     const fetchLiveData = async () => {
-      if (!listing?.name || hasFetchedRef.current) return;
-      hasFetchedRef.current = true;
+      if (!listing?.name || hasFetchedRef.current === listing.id) return;
+      hasFetchedRef.current = listing.id;
       try {
         const apiKey = import.meta.env.VITE_SERPAPI_KEY;
         if (!apiKey) {
@@ -415,10 +452,10 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
           
           if (postsJson.posts && Array.isArray(postsJson.posts)) {
             const mapped = postsJson.posts.map((post: any) => ({
-              title: post.title,
-              content: post.description || post.snippet,
+              title: post.title || null,
+              content: post.description || post.snippet || post.title || null,
               photoUri: post.thumbnails?.[0] || post.thumbnail || post.thumbnail_url || post.image_url || post.media?.[0]?.thumbnail || post.media?.[0]?.url || post.images?.[0] || null,
-              publishTime: post.posted_at_text || post.date,
+              publishTime: post.posted_at_text || post.date || null,
               callToAction: post.online_link ? {
                 url: post.online_link || post.link,
                 label: post.online_link_text || "Learn more"
@@ -432,7 +469,7 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
       }
     };
 
-    if (listing && (!liveTags || !listing.posts || listing.posts.length === 0 || socialProfiles.length === 0)) {
+    if (listing && (!liveDescription || socialProfiles.length === 0)) {
       fetchLiveData();
     }
   }, [listing]);
@@ -445,6 +482,7 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
 
       const pendingLeadStr = localStorage.getItem("storefries_pending_lead");
       const pendingUrl = localStorage.getItem("storefries_pending_url");
+      const pendingSlug = localStorage.getItem("storefries_pending_slug") || listing?.slug;
 
       if (!pendingLeadStr && !pendingUrl) return;
 
@@ -456,22 +494,34 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
           // Save lead details
           const leadEmail = leadData.email || session.user.email;
           if (leadEmail) {
-            const { error: leadErr } = await supabase.from("leads").insert([{
+            const leadPayload: any = {
               name: leadData.name,
               email: leadEmail,
               phone: leadData.phone || null,
               company: leadData.company,
               google_maps_url: leadData.google_maps_url,
-              user_id: session.user.id
-            }]);
+              user_id: session.user.id,
+              listing_url: window.location.href
+            };
+            let { error: leadErr } = await supabase.from("leads").insert([leadPayload]);
             if (leadErr) {
-              console.error("Lead saving error in post-signin:", leadErr);
+              console.warn("Lead saving post-signin failed with listing_url, trying fallback:", leadErr);
+              const fallbackCompany = `${leadData.company} [Listing URL: ${window.location.href}]`;
+              const { error: fallbackErr } = await supabase.from("leads").insert([{
+                name: leadData.name,
+                email: leadEmail,
+                phone: leadData.phone || null,
+                company: fallbackCompany,
+                google_maps_url: leadData.google_maps_url,
+                user_id: session.user.id
+              }]);
+              if (fallbackErr) console.error("Lead saving fallback error in post-signin:", fallbackErr);
             }
           }
 
           // Claim Listing
           const { error: claimErr } = await supabase.functions.invoke("generate-listing", {
-            body: { url: leadData.google_maps_url, userId: session.user.id },
+            body: { url: leadData.google_maps_url, userId: session.user.id, slug: leadData.slug || pendingSlug },
           });
           if (claimErr) throw claimErr;
 
@@ -486,19 +536,33 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
           const leadCompany = metadata.company || "Not Specified";
           const leadPhone = metadata.phone || null;
 
-          const { error: leadErr } = await supabase.from("leads").insert([{
+          const leadPayload: any = {
             name: leadName,
             email: session.user.email,
             phone: leadPhone,
             company: leadCompany,
             user_id: session.user.id,
-            google_maps_url: pendingUrl
-          }]);
-          if (leadErr) console.error("Lead saving error for existing user:", leadErr);
+            google_maps_url: pendingUrl,
+            listing_url: window.location.href
+          };
+          let { error: leadErr } = await supabase.from("leads").insert([leadPayload]);
+          if (leadErr) {
+            console.warn("Lead saving for existing user failed with listing_url, trying fallback:", leadErr);
+            const fallbackCompany = `${leadCompany} [Listing URL: ${window.location.href}]`;
+            const { error: fallbackErr } = await supabase.from("leads").insert([{
+              name: leadName,
+              email: session.user.email,
+              phone: leadPhone,
+              company: fallbackCompany,
+              user_id: session.user.id,
+              google_maps_url: pendingUrl
+            }]);
+            if (fallbackErr) console.error("Lead saving fallback error for existing user:", fallbackErr);
+          }
 
           // Claim Listing
           const { error: claimErr } = await supabase.functions.invoke("generate-listing", {
-            body: { url: pendingUrl, userId: session.user.id },
+            body: { url: pendingUrl, userId: session.user.id, slug: pendingSlug },
           });
           if (claimErr) throw claimErr;
 
@@ -511,6 +575,7 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
       } finally {
         localStorage.removeItem("storefries_pending_lead");
         localStorage.removeItem("storefries_pending_url");
+        localStorage.removeItem("storefries_pending_slug");
         localStorage.removeItem("storefries_redirect_back_url");
       }
     };
@@ -622,181 +687,81 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
     }
   };
 
-  const handleModalSubmit = async (e: React.FormEvent) => {
+  const handleCustomDomainSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!listing) return;
+    if (!listing || !currentUser) return;
 
-    if (authMode === "signup" && (!modalForm.name || !modalForm.email || !modalForm.company || !modalPassword)) {
-      toast.error("Please fill in all required fields.");
+    if (!customDomainForm.name || !customDomainForm.company) {
+      toast.error("Please fill in all required fields (Name and Company).");
       return;
     }
 
-    if (authMode === "signin" && (!modalForm.email || !modalPassword)) {
-      toast.error("Please fill in all required fields.");
-      return;
-    }
-
-    setModalLoading(true);
+    setCustomDomainLoading(true);
     const mapsLink =
       listing.google_maps_url ??
       `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(listing.formatted_address ?? listing.name)}&place_id=${listing.place_id}`;
 
-    // Cache details in localStorage depending on signin vs signup
-    if (authMode === "signup") {
-      localStorage.setItem(
-        "storefries_pending_lead",
-        JSON.stringify({
-          name: modalForm.name,
-          email: modalForm.email,
-          company: modalForm.company,
-          phone: modalForm.phone || "",
-          google_maps_url: mapsLink
-        })
-      );
-    } else {
-      localStorage.setItem("storefries_pending_url", mapsLink);
-    }
+    const payload: any = {
+      name: customDomainForm.name,
+      email: currentUser.email,
+      phone: customDomainForm.phone || null,
+      company: customDomainForm.company,
+      user_id: currentUser.id,
+      google_maps_url: mapsLink,
+      desired_domain: customDomainForm.desiredDomain || null,
+      listing_url: window.location.href
+    };
 
     try {
-      let activeUser: any = null;
+      // 1. Try to save lead details with new columns first
+      let { error: dbError } = await supabase.from("leads").insert([payload]);
 
-      if (authMode === "signin") {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: modalForm.email,
-          password: modalPassword,
-        });
-        if (error) throw error;
-        activeUser = data.user;
-      } else {
-        // Sign Up with Developer Self-Healing Flow
-        const { data, error } = await supabase.auth.signUp({
-          email: modalForm.email,
-          password: modalPassword,
-        });
+      // If it fails, fallback to storing in company field
+      if (dbError) {
+        console.warn("DB insert with custom domain columns failed, falling back to legacy format:", dbError);
+        const legacyCompany = customDomainForm.desiredDomain
+          ? `${customDomainForm.company} [Custom Domain: ${customDomainForm.desiredDomain}] [Listing URL: ${window.location.href}]`
+          : `${customDomainForm.company} [Listing URL: ${window.location.href}]`;
         
-        if (error) {
-          throw error;
-        }
-
-        // Try signing in immediately
-        try {
-          const { data: signData, error: signError } = await supabase.auth.signInWithPassword({
-            email: modalForm.email,
-            password: modalPassword,
-          });
-          if (signError) {
-            if (signError.message?.toLowerCase().includes("email not confirmed") || 
-                signError.message?.toLowerCase().includes("confirmation")) {
-              toast.info(
-                "A verification email has been sent! Please click the confirmation link in your email. Once confirmed, you will be automatically logged in and this page will be published to your account.",
-                { duration: 10000 }
-              );
-              toast.error(
-                "Developer Hint: 'Email Confirmation' is active in Supabase. To log in instantly, run: UPDATE auth.users SET email_confirmed_at = NOW() WHERE email = '" + modalForm.email + "';",
-                { duration: 15000 }
-              );
-              setIsAuthModalOpen(false);
-              setModalLoading(false);
-              return;
-            }
-            throw signError;
-          }
-          activeUser = signData.user;
-        } catch (err: any) {
-          if (err.message?.toLowerCase().includes("email not confirmed") || 
-              err.message?.toLowerCase().includes("confirmation")) {
-            toast.info(
-              "A verification email has been sent! Please click the confirmation link in your email. Once confirmed, you will be automatically logged in and this page will be published to your account.",
-              { duration: 10000 }
-            );
-            toast.error(
-              "Developer Hint: 'Email Confirmation' is active in Supabase. To log in instantly, run: UPDATE auth.users SET email_confirmed_at = NOW() WHERE email = '" + modalForm.email + "';",
-              { duration: 15000 }
-            );
-            setIsAuthModalOpen(false);
-            setModalLoading(false);
-            return;
-          }
-          throw err;
-        }
-      }
-
-      if (!activeUser) {
-        throw new Error("Authentication failed. Please check your credentials.");
-      }
-
-      // Log Lead detail
-      const { error: leadErr } = await supabase.from('leads').insert([
-        {
-          name: modalForm.name,
-          email: modalForm.email,
-          phone: modalForm.phone || null,
-          company: modalForm.company,
-          user_id: activeUser.id,
+        const fallbackPayload = {
+          name: customDomainForm.name,
+          email: currentUser.email,
+          phone: customDomainForm.phone || null,
+          company: legacyCompany,
+          user_id: currentUser.id,
           google_maps_url: mapsLink
+        };
+        const { error: fallbackError } = await supabase.from("leads").insert([fallbackPayload]);
+        if (fallbackError) throw fallbackError;
+      }
+
+      // 2. Invoke the Edge Function to send email automatically in the background
+      try {
+        const { error: functionError } = await supabase.functions.invoke("request-custom-domain", {
+          body: {
+            name: customDomainForm.name,
+            email: currentUser.email,
+            phone: customDomainForm.phone || "",
+            company: customDomainForm.company,
+            desiredDomain: customDomainForm.desiredDomain,
+            listingName: listing.name,
+            listingUrl: window.location.href,
+          },
+        });
+        if (functionError) {
+          console.warn("Background email notification failed:", functionError);
         }
-      ]);
-
-      if (leadErr) {
-        console.error("Lead saving error:", leadErr);
+      } catch (fnErr) {
+        console.warn("Background email notification error:", fnErr);
       }
 
-      // Claim Listing via generate-listing Edge Function
-      const { data: genData, error: genError } = await supabase.functions.invoke("generate-listing", {
-        body: { url: mapsLink, userId: activeUser.id },
-      });
-
-      if (genError) {
-        throw genError;
-      }
-
-      // Update local listing state to show it is now claimed/published!
-      setListing(prev => prev ? { ...prev, user_id: activeUser.id } : null);
-      setCurrentUser(activeUser);
-      setIsAuthModalOpen(false);
-      toast.success("Page successfully published to your account!");
+      toast.success("Custom domain request submitted successfully! We will contact you soon.");
+      setCustomDomainOpen(false);
     } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Failed to publish listing.");
+      console.error("Failed to submit custom domain request:", err);
+      toast.error(err.message || "Failed to submit request. Please try again.");
     } finally {
-      setModalLoading(false);
-    }
-  };
-
-  const handleGooglePublish = async () => {
-    if (!listing) return;
-
-    if (!modalForm.name || !modalForm.email || !modalForm.company) {
-      toast.error("Please fill in all required fields (Name, Email, Company) before signing in with Google.");
-      return;
-    }
-
-    const mapsLink =
-      listing.google_maps_url ??
-      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(listing.formatted_address ?? listing.name)}&place_id=${listing.place_id}`;
-
-    // Cache the lead details and maps link in localStorage so we can claim and log lead post-OAuth
-    localStorage.setItem(
-      "storefries_pending_lead",
-      JSON.stringify({
-        name: modalForm.name,
-        email: modalForm.email,
-        company: modalForm.company,
-        phone: modalForm.phone || "",
-        google_maps_url: mapsLink
-      })
-    );
-
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: window.location.href, // return back to this exact page!
-        },
-      });
-      if (error) throw error;
-    } catch (err: any) {
-      toast.error(err.message || "Failed to initiate Google sign-in.");
+      setCustomDomainLoading(false);
     }
   };
 
@@ -837,6 +802,7 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
       localStorage.setItem("storefries_redirect_back_url", window.location.pathname);
       localStorage.setItem("storefries_pending_url", mapsLink);
       localStorage.setItem("storefries_pending_name", listing.name);
+      localStorage.setItem("storefries_pending_slug", listing.slug);
       
       toast.info("Please sign in or sign up to publish this page.");
       navigate("/signin");
@@ -847,7 +813,7 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
     setPublishing(true);
     try {
       const { data, error } = await supabase.functions.invoke("generate-listing", {
-        body: { url: mapsLink, userId: currentUser.id },
+        body: { url: mapsLink, userId: currentUser.id, slug: listing.slug },
       });
       if (error) throw error;
       
@@ -856,15 +822,31 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
       const leadCompany = metadata.company || "Not Specified";
       const leadPhone = metadata.phone || null;
 
-      const { error: leadErr } = await supabase.from("leads").insert([{
+      const publishPayload: any = {
         name: leadName,
         email: currentUser.email,
         phone: leadPhone,
         company: leadCompany,
         user_id: currentUser.id,
-        google_maps_url: mapsLink
-      }]);
-      if (leadErr) console.error("Lead saving error:", leadErr);
+        google_maps_url: mapsLink,
+        listing_url: window.location.href
+      };
+
+      let { error: leadErr } = await supabase.from("leads").insert([publishPayload]);
+
+      if (leadErr) {
+        console.warn("Saving publish lead with listing_url failed, trying fallback:", leadErr);
+        const fallbackCompany = `${leadCompany} [Listing URL: ${window.location.href}]`;
+        const { error: fallbackErr } = await supabase.from("leads").insert([{
+          name: leadName,
+          email: currentUser.email,
+          phone: leadPhone,
+          company: fallbackCompany,
+          user_id: currentUser.id,
+          google_maps_url: mapsLink
+        }]);
+        if (fallbackErr) console.error("Lead saving fallback error:", fallbackErr);
+      }
 
       // Update local state user_id
       setListing(prev => prev ? { ...prev, user_id: currentUser.id } : null);
@@ -898,13 +880,21 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
               You own this premium page. You have administrative access.
             </p>
           </div>
-          <Button 
-            onClick={handleDeleteListing}
-            disabled={publishing}
-            className="h-8 px-6 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-full shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-0 flex-shrink-0 mx-auto sm:mx-0 flex items-center gap-1.5"
-          >
-            Delete page
-          </Button>
+          <div className="flex gap-2.5 mx-auto sm:mx-0">
+            <Button 
+              onClick={() => setCustomDomainOpen(true)}
+              className="h-8 px-6 bg-brand-blue hover:bg-brand-blue/80 text-white font-extrabold text-xs rounded-full shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-0 flex-shrink-0 flex items-center gap-1.5"
+            >
+              Request Custom Domain
+            </Button>
+            <Button 
+              onClick={handleDeleteListing}
+              disabled={publishing}
+              className="h-8 px-6 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-full shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-0 flex-shrink-0 flex items-center gap-1.5"
+            >
+              Delete page
+            </Button>
+          </div>
         </div>
       )}
       {!listing.user_id && (
@@ -1022,7 +1012,7 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
                 </Button>
               )}
               <Button asChild size="icon" title="Directions" className="h-9 w-9 rounded-full bg-[#34A853] hover:bg-[#2E964A] text-white border-0 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 font-semibold">
-                <a href={mapsLink} target="_blank" rel="noopener noreferrer"><Navigation className="h-4 w-4" /></a>
+                <a href={mapsLink} target="_blank" rel="noopener noreferrer"><MapPin className="h-4 w-4" /></a>
               </Button>
               {whatsappLink && (
                 <Button asChild size="icon" title="WhatsApp" className="h-9 w-9 rounded-full bg-[#25D366] hover:bg-[#20BA5A] text-white border-0 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 font-semibold">
@@ -1046,12 +1036,30 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
                 return uniqueProfiles.map((p, idx) => {
                   const getSocialConfig = (name: string) => {
                     const n = name.toLowerCase();
-                    if (n.includes("facebook") || n === "fb") return { icon: <Facebook className="h-4 w-4" />, color: "bg-[#1877F2] hover:bg-[#166FE5]", label: "Facebook" };
-                    if (n.includes("instagram") || n === "ig") return { icon: <Instagram className="h-4 w-4" />, color: "bg-[#E4405F] hover:bg-[#D62976]", label: "Instagram" };
-                    if (n.includes("twitter") || n === "x" || n === "x (twitter)") return { icon: <Twitter className="h-4 w-4" />, color: "bg-black hover:bg-gray-900", label: "X" };
-                    if (n.includes("youtube") || n === "yt") return { icon: <Youtube className="h-4 w-4" />, color: "bg-[#FF0000] hover:bg-[#CC0000]", label: "YouTube" };
-                    if (n.includes("linkedin")) return { icon: <Linkedin className="h-4 w-4" />, color: "bg-[#0A66C2] hover:bg-[#004182]", label: "LinkedIn" };
-                    if (n.includes("pinterest")) return { icon: <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line><circle cx="12" cy="12" r="10"></circle></svg>, color: "bg-[#BD081C] hover:bg-[#AD081B]", label: "Pinterest" };
+                    if (n.includes("facebook") || n === "fb") return {
+                      icon: <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>,
+                      color: "bg-[#1877F2] hover:bg-[#166FE5]", label: "Facebook"
+                    };
+                    if (n.includes("instagram") || n === "ig") return {
+                      icon: <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>,
+                      color: "bg-gradient-to-br from-[#833ab4] via-[#fd1d1d] to-[#fcb045] hover:opacity-90", label: "Instagram"
+                    };
+                    if (n.includes("twitter") || n === "x" || n === "x (twitter)") return {
+                      icon: <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.748l7.73-8.835L1.254 2.25H8.08l4.713 5.932zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>,
+                      color: "bg-black hover:bg-gray-800", label: "X"
+                    };
+                    if (n.includes("youtube") || n === "yt") return {
+                      icon: <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>,
+                      color: "bg-[#FF0000] hover:bg-[#CC0000]", label: "YouTube"
+                    };
+                    if (n.includes("linkedin")) return {
+                      icon: <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>,
+                      color: "bg-[#0A66C2] hover:bg-[#004182]", label: "LinkedIn"
+                    };
+                    if (n.includes("pinterest")) return {
+                      icon: <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M12 0C5.373 0 0 5.373 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 0 1 .083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.632-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0z"/></svg>,
+                      color: "bg-[#BD081C] hover:bg-[#AD081B]", label: "Pinterest"
+                    };
                     return { icon: <Globe className="h-4 w-4" />, color: "bg-slate-500 hover:bg-slate-600", label: "Website" };
                   };
 
@@ -1114,8 +1122,6 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
                   )}
                 </div>
 
-
-
                 {/* Inline Gallery */}
                 {photos.length > 1 && (
                   <div className="pt-6">
@@ -1157,7 +1163,7 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
                         <p className="text-sm font-medium leading-tight flex-1">{listing.formatted_address}</p>
                         <Button asChild size="icon" className="h-10 w-10 rounded-full flex-shrink-0 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 border-0">
                           <a href={mapsLink} target="_blank" rel="noopener noreferrer" title="Get Directions">
-                            <Navigation className="h-4 w-4" />
+                            <MapPin className="h-4 w-4" />
                           </a>
                         </Button>
                       </div>
@@ -1173,7 +1179,7 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
                     <div>
                       <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1 font-semibold">Website</p>
                       <a href={listing.website} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-brand-blue hover:underline truncate block">
-                        {listing.website.replace(/^https?:\/\//, "")}
+                        {listing.website.replace(/^https?:\/\//, "").replace(/\/+$/, "")}
                       </a>
                     </div>
                   )}
@@ -1274,10 +1280,12 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
                         <article className="h-full bg-background border border-border shadow-sm rounded-xl overflow-hidden flex flex-col hover:shadow-md transition-shadow">
                           <div className="aspect-square w-full bg-white overflow-hidden flex items-center justify-center relative border-b border-border/50">
                             {post.photoUri ? (
-                              <img src={post.photoUri} alt={post.title || "Post image"} referrerPolicy="no-referrer" className="w-full h-full object-contain group-hover/post:scale-105 transition-transform duration-500" loading="lazy" />
+                              <img src={post.photoUri} alt={post.title || post.content || "Post image"} referrerPolicy="no-referrer" className="w-full h-full object-contain group-hover/post:scale-105 transition-transform duration-500" loading="lazy" />
                             ) : (
-                              <div className="text-muted-foreground/30 flex flex-col items-center">
-                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                              <div className="w-full h-full flex items-center justify-center p-5 bg-gradient-to-br from-brand-blue/5 to-brand-blue/10">
+                                <p className="text-sm text-foreground/60 leading-relaxed line-clamp-6 text-center italic">
+                                  {post.content || post.title || "Text post"}
+                                </p>
                               </div>
                             )}
                           </div>
@@ -1649,6 +1657,103 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
         </div>
       )}
 
+      {/* Request Custom Domain Shadcn Dialog */}
+      <Dialog open={customDomainOpen} onOpenChange={setCustomDomainOpen}>
+        <DialogContent className="sm:max-w-md rounded-3xl border border-border/80 backdrop-blur-2xl bg-card/95 dark:bg-black/80 shadow-2xl p-6">
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle className="text-xl font-bold bg-gradient-to-r from-brand-blue to-purple-600 bg-clip-text text-transparent">
+              Request Custom Domain
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground font-medium">
+              Link your premium page <span className="text-foreground font-bold">{listing.name}</span> to a custom domain. We'll handle the configuration.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleCustomDomainSubmit} className="space-y-4 mt-4 text-left">
+            <div className="space-y-1">
+              <Label htmlFor="domain-name" className="text-xs font-bold text-foreground/80">Your Name *</Label>
+              <Input
+                id="domain-name"
+                value={customDomainForm.name}
+                onChange={(e) => setCustomDomainForm(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="John Doe"
+                className="rounded-xl border-border bg-background py-4 text-xs font-semibold"
+                required
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="domain-email" className="text-xs font-bold text-foreground/80">Email (Read-only)</Label>
+              <Input
+                id="domain-email"
+                value={customDomainForm.email}
+                className="rounded-xl border-border bg-muted py-4 text-xs font-semibold"
+                disabled
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="domain-company" className="text-xs font-bold text-foreground/80">Company *</Label>
+                <Input
+                  id="domain-company"
+                  value={customDomainForm.company}
+                  onChange={(e) => setCustomDomainForm(prev => ({ ...prev, company: e.target.value }))}
+                  placeholder="Company Name"
+                  className="rounded-xl border-border bg-background py-4 text-xs font-semibold"
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="domain-phone" className="text-xs font-bold text-foreground/80">Phone</Label>
+                <Input
+                  id="domain-phone"
+                  value={customDomainForm.phone}
+                  onChange={(e) => setCustomDomainForm(prev => ({ ...prev, phone: e.target.value }))}
+                  placeholder="+91..."
+                  className="rounded-xl border-border bg-background py-4 text-xs font-semibold"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="domain-desired" className="text-xs font-bold text-foreground/80">Desired Domain</Label>
+              <Input
+                id="domain-desired"
+                value={customDomainForm.desiredDomain}
+                onChange={(e) => setCustomDomainForm(prev => ({ ...prev, desiredDomain: e.target.value }))}
+                placeholder="e.g., www.mybusiness.com"
+                className="rounded-xl border-border bg-background py-4 text-xs font-semibold"
+              />
+            </div>
+
+            <div className="flex gap-2.5 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCustomDomainOpen(false)}
+                className="flex-1 py-5 rounded-xl text-xs font-bold"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={customDomainLoading}
+                className="flex-1 py-5 rounded-xl text-xs font-bold bg-brand-blue text-white hover:bg-brand-blue/90"
+              >
+                {customDomainLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                    Sending...
+                  </>
+                ) : (
+                  <>Submit Request</>
+                )}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

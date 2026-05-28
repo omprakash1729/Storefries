@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Generate or fetch a listing from a Google Maps URL
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -153,7 +154,7 @@ Deno.serve(async (req) => {
   try {
     if (!PLACES_KEY) throw new Error("GOOGLE_PLACES_API_KEY missing");
 
-    const { url, userId } = await req.json();
+    const { url, userId, slug: requestedSlug } = await req.json();
     if (!url || typeof url !== "string") {
       return new Response(JSON.stringify({ error: "Missing url" }), {
         status: 400,
@@ -161,9 +162,61 @@ Deno.serve(async (req) => {
       });
     }
 
+    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+    // 1. Direct Claim via Slug (fast path)
+    if (requestedSlug && userId) {
+      console.log(`Checking direct claim for slug: ${requestedSlug} and user: ${userId}`);
+      const { data: existingSlug } = await supabase
+        .from("listings")
+        .select("slug, user_id")
+        .eq("slug", requestedSlug)
+        .maybeSingle();
+
+      if (existingSlug) {
+        if (!existingSlug.user_id) {
+          console.log(`Claiming listing ${requestedSlug} for user ${userId}`);
+          await supabase
+            .from("listings")
+            .update({ user_id: userId })
+            .eq("slug", requestedSlug);
+        }
+        return new Response(JSON.stringify({ slug: existingSlug.slug, cached: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     let workingUrl = url.trim();
     if (/maps\.app\.goo\.gl|goo\.gl\/maps/.test(workingUrl)) {
       workingUrl = await expandShortUrl(workingUrl);
+    }
+
+    // 2. Direct Claim via CID match in URL
+    if (workingUrl.includes("cid=") && userId) {
+      const cidMatch = workingUrl.match(/[?&]cid=(\d+)/);
+      if (cidMatch) {
+        const cid = cidMatch[1];
+        console.log(`Searching listing by CID: ${cid}`);
+        const { data: existingCid } = await supabase
+          .from("listings")
+          .select("slug, user_id")
+          .like("google_maps_url", `%cid=${cid}%`)
+          .maybeSingle();
+
+        if (existingCid) {
+          if (!existingCid.user_id) {
+            console.log(`Claiming listing ${existingCid.slug} for user ${userId} via CID search`);
+            await supabase
+              .from("listings")
+              .update({ user_id: userId })
+              .eq("slug", existingCid.slug);
+          }
+          return new Response(JSON.stringify({ slug: existingCid.slug, cached: true }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
     }
 
     let placeId = extractPlaceIdFromUrl(workingUrl);
@@ -185,8 +238,6 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
     // Return existing if present
     const { data: existing } = await supabase
