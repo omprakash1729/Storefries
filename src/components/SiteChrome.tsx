@@ -82,12 +82,6 @@ export const SiteHeader = () => {
           >
             Browse
           </Link>
-          <Link
-            to="/leads"
-            className={pathname === "/leads" ? "text-brand-blue" : "text-foreground hover:text-brand-blue"}
-          >
-            Leads
-          </Link>
 
           {!authLoading && (
             user ? (
@@ -165,13 +159,6 @@ export const SiteHeader = () => {
                     className={`text-base font-semibold py-2 border-b border-border/40 transition-colors ${pathname === "/listings" ? "text-brand-blue" : "text-foreground hover:text-brand-blue"}`}
                   >
                     Browse
-                  </Link>
-                  <Link
-                    to="/leads"
-                    onClick={() => setIsOpen(false)}
-                    className={`text-base font-semibold py-2 border-b border-border/40 transition-colors ${pathname === "/leads" ? "text-brand-blue" : "text-foreground hover:text-brand-blue"}`}
-                  >
-                    Leads
                   </Link>
                 </nav>
               </div>

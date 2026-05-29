@@ -9,7 +9,6 @@ import { ThemeProvider } from "next-themes";
 import Index from "./pages/Index";
 import SignIn from "./pages/SignIn";
 import Generate from "./pages/Generate";
-import Leads from "./pages/Leads";
 import Listing from "./pages/Listing";
 import Listings from "./pages/Listings";
 import NotFound from "./pages/NotFound";
@@ -78,7 +77,6 @@ const AppContent = () => {
         <Route path="/" element={<Index />} />
         <Route path="/signin" element={<SignIn />} />
         <Route path="/generate" element={<Generate />} />
-        <Route path="/leads" element={<Leads />} />
         <Route path="/listings" element={<Listings />} />
         <Route path="/l/:slug" element={<Listing />} />
         <Route path="*" element={<NotFound />} />
