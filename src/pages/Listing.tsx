@@ -61,7 +61,7 @@ const getCityOrBranch = (address: string | null): string => {
 
 const validatePhone = (phone: string): boolean => {
   if (!phone) return true;
-  const phoneRegex = /^\+?[0-9\s\-\(\)]{7,20}$/;
+  const phoneRegex = /^\+?[0-9\s\-()]{7,20}$/;
   return phoneRegex.test(phone);
 };
 
@@ -509,7 +509,7 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
               user_id: session.user.id,
               listing_url: window.location.href
             };
-            let { error: leadErr } = await supabase.from("leads").insert([leadPayload]);
+            const { error: leadErr } = await supabase.from("leads").insert([leadPayload]);
             if (leadErr) {
               console.warn("Lead saving post-signin failed with listing_url, trying fallback:", leadErr);
               const fallbackCompany = `${leadData.company} [Listing URL: ${window.location.href}]`;
@@ -551,7 +551,7 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
             google_maps_url: pendingUrl,
             listing_url: window.location.href
           };
-          let { error: leadErr } = await supabase.from("leads").insert([leadPayload]);
+          const { error: leadErr } = await supabase.from("leads").insert([leadPayload]);
           if (leadErr) {
             console.warn("Lead saving for existing user failed with listing_url, trying fallback:", leadErr);
             const fallbackCompany = `${leadCompany} [Listing URL: ${window.location.href}]`;
@@ -725,7 +725,7 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
 
     try {
       // 1. Try to save lead details with new columns first
-      let { error: dbError } = await supabase.from("leads").insert([payload]);
+      const { error: dbError } = await supabase.from("leads").insert([payload]);
 
       // If it fails, fallback to storing in company field
       if (dbError) {
@@ -843,7 +843,7 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
         listing_url: window.location.href
       };
 
-      let { error: leadErr } = await supabase.from("leads").insert([publishPayload]);
+      const { error: leadErr } = await supabase.from("leads").insert([publishPayload]);
 
       if (leadErr) {
         console.warn("Saving publish lead with listing_url failed, trying fallback:", leadErr);

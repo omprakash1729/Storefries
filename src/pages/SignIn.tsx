@@ -22,7 +22,7 @@ const GoogleLogo = () => (
 
 const validatePhone = (phone: string): boolean => {
   if (!phone) return true;
-  const phoneRegex = /^\+?[0-9\s\-\(\)]{7,20}$/;
+  const phoneRegex = /^\+?[0-9\s\-()]{7,20}$/;
   return phoneRegex.test(phone);
 };
 
@@ -192,7 +192,7 @@ const SignIn = () => {
           listing_url: listingUrl
         };
 
-        let { error: leadErr } = await supabase.from("leads").insert([leadPayload]);
+        const { error: leadErr } = await supabase.from("leads").insert([leadPayload]);
         
         if (leadErr) {
           console.warn("Direct lead insert with listing_url failed, trying fallback:", leadErr);
