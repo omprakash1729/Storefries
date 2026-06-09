@@ -3,16 +3,16 @@ import { Button } from "@/components/ui/button";
 import { Seo } from "@/components/Seo";
 import { SiteHeader, SiteFooter } from "@/components/SiteChrome";
 import { Search, Globe, Zap, BarChart3, Users, MessageSquare, Share2, Target, ShieldCheck, TrendingUp, Quote, CheckCircle2 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, Variants } from "framer-motion";
 import { SoftAurora } from "@/components/SoftAurora";
 import { SplashCursor } from "@/components/SplashCursor";
 
-const fadeInUp = {
+const fadeInUp: Variants = {
   hidden: { opacity: 0, y: 40 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } }
 };
 
-const staggerContainer = {
+const staggerContainer: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,

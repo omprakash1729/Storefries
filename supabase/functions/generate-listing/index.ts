@@ -11,7 +11,8 @@ const corsHeaders = {
 const PLACES_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const SERPAPI_KEY = Deno.env.get("SERPAPI_KEY") || "b533f725f2bcd19420d0e872e3ef639de8a792082f1ea125508b3cfa70e05a4b";
+const SERPAPI_KEY = Deno.env.get("SERPAPI_KEY")!;
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!;
 
 function slugify(input: string): string {
   return input
@@ -47,6 +48,21 @@ function extractQueryFromUrl(url: string): { query?: string; lat?: number; lng?:
   let query: string | undefined;
   if (placeMatch) {
     query = decodeURIComponent(placeMatch[1].replace(/\+/g, " "));
+  } else {
+    // Fallback: extract from 'q=' query parameter
+    try {
+      const parsedUrl = new URL(url);
+      const qParam = parsedUrl.searchParams.get("q");
+      if (qParam) {
+        query = qParam;
+      }
+    } catch {
+      // If URL parsing fails, try matching regex
+      const qMatch = url.match(/[?&]q=([^&]+)/);
+      if (qMatch) {
+        query = decodeURIComponent(qMatch[1].replace(/\+/g, " "));
+      }
+    }
   }
   let lat: number | undefined, lng: number | undefined;
   if (atMatch) {
@@ -148,6 +164,119 @@ async function fetchGmbData(name: string, address: string) {
   }
 }
 
+async function generateSeoDescription(
+  name: string,
+  category: string | null,
+  address: string | null,
+  googleSummary: string | null,
+  reviews: any[] | null,
+  posts: any[] | null
+): Promise<string | null> {
+  if (!OPENAI_API_KEY) {
+    console.warn("OPENAI_API_KEY is not defined.");
+    return null;
+  }
+  try {
+    const fallbackText = `${name} is a local business${category ? ` categorized under ${category}` : ""}${address ? `, located at ${address}` : ""}.`;
+    let prompt = `Write an engaging, professional, and SEO-friendly "About Us" description for a local business.
+Here is the retrieved information about this business:
+Business Name: ${name}
+Category: ${category || "Local Business"}
+Address: ${address || "Not Specified"}
+`;
+
+    if (googleSummary) {
+      prompt += `Google's Short Summary: ${googleSummary}\n`;
+    }
+
+    if (reviews && Array.isArray(reviews) && reviews.length > 0) {
+      const reviewSnippets = reviews
+        .slice(0, 3)
+        .map((r: any) => r.text?.text)
+        .filter(Boolean)
+        .join(" | ");
+      if (reviewSnippets) {
+        prompt += `Customer Reviews Highlights: ${reviewSnippets}\n`;
+      }
+    }
+
+    if (posts && Array.isArray(posts) && posts.length > 0) {
+      const postSnippets = posts
+        .slice(0, 2)
+        .map((p: any) => p.content || p.title)
+        .filter(Boolean)
+        .join(" | ");
+      if (postSnippets) {
+        prompt += `Recent Updates/Posts: ${postSnippets}\n`;
+      }
+    }
+
+    prompt += `
+Basic Description: ${fallbackText}
+
+Instructions:
+- The description MUST contain exactly 700 to 750 characters when spaces are excluded (count only non-space characters). This is a hard requirement — do not exceed 750 or go below 700 non-space characters.
+- DO NOT use em dashes (— or ) under ANY circumstances. Replace with commas, semicolons, or parentheses.
+- DO NOT include any website URLs or links in the description.
+- Optimize the content with relevant local SEO keywords, naturally integrating the business name, category, services/products, and city/neighborhood/location.
+- Synthesize all the provided info (reviews, posts, short summary) into a cohesive, professional, welcoming, and trust-building about section. Do not list them raw.
+- Output ONLY the generated description. Do not include any quotes, greetings, introductory text, or formatting.`;
+
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "You are an expert SEO copywriter specializing in local businesses." },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 300,
+      }),
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      console.error("OpenAI API error:", json);
+      return null;
+    }
+    let description = (json.choices?.[0]?.message?.content ?? "").trim();
+    if (!description) return null;
+
+    // Post-process: strip em dashes (—, –, --)
+    description = description.replace(/\u2014|\u2013|--/g, ",");
+
+    // Post-process: remove any URLs accidentally included
+    description = description.replace(/https?:\/\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
+
+    // Post-process: enforce 700-750 non-space char limit by trimming at sentence boundary
+    const nonSpaceCount = (s: string) => s.replace(/ /g, "").length;
+    if (nonSpaceCount(description) > 750) {
+      // Trim to last sentence ending that keeps us within the limit
+      const sentences = description.match(/[^.!?]+[.!?]+/g) || [description];
+      let trimmed = "";
+      for (const sentence of sentences) {
+        const candidate = (trimmed + " " + sentence).trim();
+        if (nonSpaceCount(candidate) <= 750) {
+          trimmed = candidate;
+        } else {
+          break;
+        }
+      }
+      description = trimmed || description.slice(0, 900); // hard fallback
+    }
+
+    return description || null;
+  } catch (error) {
+    console.error("Error generating SEO description with OpenAI:", error);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -188,7 +317,7 @@ Deno.serve(async (req) => {
     }
 
     let workingUrl = url.trim();
-    if (/maps\.app\.goo\.gl|goo\.gl\/maps/.test(workingUrl)) {
+    if (/maps\.app\.goo\.gl|goo\.gl\/maps|share\.google/.test(workingUrl)) {
       workingUrl = await expandShortUrl(workingUrl);
     }
 
@@ -284,6 +413,17 @@ Deno.serve(async (req) => {
     }
 
     const gmbData = await fetchGmbData(name, details.formattedAddress || "");
+    const category = gmbData.type || details.primaryTypeDisplayName?.text || details.types?.[0] || null;
+
+    console.log(`Generating OpenAI description for: ${name}`);
+    const editorial_summary = await generateSeoDescription(
+      name,
+      category,
+      details.formattedAddress ?? null,
+      details.editorialSummary?.text ?? null,
+      details.reviews ?? null,
+      gmbData.posts ?? null
+    ) || details.editorialSummary?.text || null;
 
     const row = {
       slug,
@@ -292,7 +432,7 @@ Deno.serve(async (req) => {
       formatted_address: details.formattedAddress ?? null,
       phone: details.internationalPhoneNumber ?? details.nationalPhoneNumber ?? null,
       website: details.websiteUri ?? null,
-      category: gmbData.type || details.primaryTypeDisplayName?.text || details.types?.[0] || null,
+      category,
       rating: details.rating ?? null,
       user_ratings_total: details.userRatingCount ?? null,
       lat: details.location?.latitude ?? null,
@@ -300,7 +440,7 @@ Deno.serve(async (req) => {
       opening_hours: details.regularOpeningHours ?? null,
       photos: details.photos ?? null,
       reviews: details.reviews ?? null,
-      editorial_summary: details.editorialSummary?.text ?? null,
+      editorial_summary,
       google_maps_url: details.googleMapsUri ?? null,
       raw: details,
       posts: gmbData.posts,

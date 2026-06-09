@@ -31,6 +31,8 @@ interface Listing {
   editorial_summary: string | null;
   google_maps_url: string | null;
   raw?: any;
+  user_id?: string | null;
+  posts?: any;
 }
 
 const Stars = ({ value }: { value: number }) => (
@@ -65,7 +67,30 @@ const validatePhone = (phone: string): boolean => {
   return phoneRegex.test(phone);
 };
 
+
+const formatDescription = (desc: string | null) => {
+  if (!desc) return null;
+  let clean = desc.replace(/\u2014|\u2013|--/g, ",");
+  clean = clean.replace(/https?:\/\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
+  const nonSpaceCount = (s: string) => s.replace(/ /g, "").length;
+  if (nonSpaceCount(clean) > 750) {
+    const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
+    let trimmed = "";
+    for (const sentence of sentences) {
+      const candidate = (trimmed + " " + sentence).trim();
+      if (nonSpaceCount(candidate) <= 750) {
+        trimmed = candidate;
+      } else {
+        break;
+      }
+    }
+    clean = trimmed || clean.slice(0, 800) + "...";
+  }
+  return clean;
+};
+
 const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
+
   const params = useParams();
   const slug = subdomainSlug || params.slug;
   const navigate = useNavigate();
@@ -237,247 +262,166 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
   }, [isHoveringPosts, listing, livePosts]);
 
   useEffect(() => {
-    // Dynamically fetch tags, social profiles, and posts from SerpApi if not fully populated
     const fetchLiveData = async () => {
       if (!listing?.name || hasFetchedRef.current === listing.id) return;
       hasFetchedRef.current = listing.id;
       try {
         const apiKey = import.meta.env.VITE_SERPAPI_KEY;
-        if (!apiKey) {
-          console.error("VITE_SERPAPI_KEY is missing in this environment!");
-          return;
-        }
-        console.log("Fetching live data for:", listing.name);
+        if (!apiKey) { console.error('VITE_SERPAPI_KEY missing'); return; }
 
-        // Extract the structured locality/city from raw data for a laser-focused search query
-        // Google Knowledge Graphs pop reliably for "Name City", but fail for long exact addresses.
-        let city = "";
+        let city = '';
         if (listing.raw?.addressComponents && Array.isArray(listing.raw.addressComponents)) {
-          const comp = listing.raw.addressComponents.find((c: any) => 
-            c.types?.includes("locality") || c.types?.includes("sublocality_level_1") || c.types?.includes("sublocality")
+          const comp = listing.raw.addressComponents.find((c: any) =>
+            c.types?.includes('locality') || c.types?.includes('sublocality_level_1') || c.types?.includes('sublocality')
           );
           if (comp) city = comp.longText || comp.shortText;
         }
-        
-        // Fallback extraction if raw components are missing
         if (!city && listing.formatted_address) {
           const parts = listing.formatted_address.split(',').map((p: any) => p.trim());
-          if (parts.length >= 3) {
-            city = parts[parts.length - 3]; // Standard layout yields city here
-          } else if (parts.length > 1) {
-            city = parts[1];
-          }
+          if (parts.length >= 3) city = parts[parts.length - 3];
+          else if (parts.length > 1) city = parts[1];
         }
-        
-        const finalSearchStr = city ? `${listing.name} ${city}` : listing.name;
-        console.log("[SERP] Optimized Search Query Created:", finalSearchStr);
 
-        const query = encodeURIComponent(finalSearchStr);
-        const mapsUrl = `/api/serpapiProxy?engine=google_maps&q=${query}&api_key=${apiKey}`;
-        const googleUrl = `/api/serpapiProxy?engine=google&q=${query}&api_key=${apiKey}`;
-        
-        console.log("[SERP] Initiating Sequential Discovery Fetch...");
-        
-        // Fetch Sequentially to strictly obey SerpApi's serial concurrency limits
+        const q = encodeURIComponent(city ? `${listing.name} ${city}` : listing.name);
+        console.log('[SERP] Search:', decodeURIComponent(q));
+
         let mapsJson: any = null;
         try {
-          console.log("[SERP] Fetching Google Maps Data...");
-          const mapsRes = await fetch(mapsUrl);
-          if (mapsRes.ok) {
-            mapsJson = await mapsRes.json();
-            console.log("[SERP] Maps Success:", !!mapsJson);
-          } else {
-            console.warn("[SERP] Maps fetch non-ok:", mapsRes.status);
-          }
-        } catch (e) {
-          console.error("[SERP] Maps fetch failed:", e);
-        }
+          const r = await fetch(`/api/serpapiProxy?engine=google_maps&q=${q}&api_key=${apiKey}`);
+          if (r.ok) mapsJson = await r.json();
+        } catch { /* ignore */ }
 
         let googleJson: any = null;
         try {
-          console.log("[SERP] Fetching Organic Search Profiles...");
-          const googleRes = await fetch(googleUrl);
-          if (googleRes.ok) {
-            googleJson = await googleRes.json();
-            console.log("[SERP] Organic Success:", !!googleJson);
-          } else {
-            console.warn("[SERP] Organic fetch non-ok:", googleRes.status);
-          }
-        } catch (e) {
-          console.error("[SERP] Organic fetch failed:", e);
-        }
-        
+          const r = await fetch(`/api/serpapiProxy?engine=google&q=${q}&api_key=${apiKey}`);
+          if (r.ok) googleJson = await r.json();
+        } catch { /* ignore */ }
+
         const placeResult = mapsJson?.local_results?.[0] || mapsJson?.place_results;
-        const knowledgeGraph = googleJson?.knowledge_graph;
-        
-        console.log("[SERP] Knowledge Graph Detected:", !!knowledgeGraph);
-        console.log("[SERP] Discovered Profiles Found:", knowledgeGraph?.profiles?.length || 0);
+        const kg = googleJson?.knowledge_graph;
+        console.log('[SERP] KG:', !!kg, '| Place:', placeResult?.title);
 
-        // Debugging logs to help us find the exact paragraph if it's hidden elsewhere
-        console.log("[SERP] Full Maps API Response:", mapsJson);
-        console.log("[SERP] Full Google API Response:", googleJson);
+        // Description (only used as fallback - editorial_summary from AI takes priority in render)
+        const rawDesc = placeResult?.description || kg?.merchant_description || kg?.description || kg?.detailed_description?.article_body;
+        if (rawDesc) setLiveDescription(String(rawDesc).replace(/^"|"$/g, '').trim());
 
-        // Extract "From the business" description if available
-        let newDesc = null;
-        if (placeResult?.description) {
-          newDesc = placeResult.description;
-        } else if (knowledgeGraph?.merchant_description) {
-          newDesc = knowledgeGraph.merchant_description;
-        } else if (knowledgeGraph?.description) {
-          newDesc = knowledgeGraph.description;
-        } else if (knowledgeGraph?.detailed_description?.article_body) {
-          newDesc = knowledgeGraph.detailed_description.article_body;
-        }
-        
-        if (newDesc) {
-           // Remove any leading or trailing double quotes that might come from the API
-           const cleanDesc = newDesc.replace(/^"|"$/g, '').trim();
-           console.log("[SERP] Supplementing description:", cleanDesc);
-           setLiveDescription(cleanDesc);
-        }
+        // Phone fallback
+        if (!listing.phone && kg?.phone) setListing(prev => prev ? { ...prev, phone: kg.phone } : null);
 
-        // Augment listing with missing phone from knowledge graph if found
-        if (!listing.phone && knowledgeGraph?.phone) {
-          console.log("[SERP] Supplementing phone number from Knowledge Graph:", knowledgeGraph.phone);
-          setListing(prev => prev ? { ...prev, phone: knowledgeGraph.phone } : null);
-        }
-
-        // Extract subcategories / tags
-        if (placeResult?.type && Array.isArray(placeResult.type)) {
-          setLiveTags(placeResult.type);
-        }
-        
-        if (placeResult?.about && Array.isArray(placeResult.about)) {
-          setLiveAbout(placeResult.about);
-        }
-        
-        if (placeResult?.service_options) {
-          setLiveServiceOptions(placeResult.service_options);
-        }
-
-        // Parse the extensions array: [{service_options: ["Onsite services"]}, {amenities: ["Restroom"]}, ...]
-        if (placeResult?.extensions && Array.isArray(placeResult.extensions)) {
+        // Tags / about / service options
+        if (Array.isArray(placeResult?.type)) setLiveTags(placeResult.type);
+        if (Array.isArray(placeResult?.about)) setLiveAbout(placeResult.about);
+        if (placeResult?.service_options) setLiveServiceOptions(placeResult.service_options);
+        if (Array.isArray(placeResult?.extensions)) {
           const normalized = placeResult.extensions.map((ext: Record<string, string[]>) => {
             const [id, values] = Object.entries(ext)[0] || [];
             if (!id || !Array.isArray(values)) return null;
-            return {
-              id,
-              options: values.map((v: string) => ({ name: v, enabled: true }))
-            };
+            return { id, options: values.map((v: string) => ({ name: v, enabled: true })) };
           }).filter(Boolean);
           if (normalized.length > 0) {
             setLiveAbout(prev => {
               const prevIds = new Set((prev || []).map((s: any) => s.id));
-              const newSections = normalized.filter((s: any) => !prevIds.has(s.id));
-              return [...(prev || []), ...newSections];
+              return [...(prev || []), ...normalized.filter((s: any) => !prevIds.has(s.id))];
             });
           }
         }
 
-        // Extract connected social media profiles from ALL SerpApi result sources
+        // ─── Social Profile Extraction ─────────────────────────────────────
         const profiles: Array<{ name: string; url: string }> = [];
-        
-        // Helper to safely add discovered profiles uniquely
-        const tryAddProfile = (name: string, url: string) => {
-          if (!name || !url) return;
-          // Check if already inserted
-          if (profiles.some(p => p.url.replace(/\/$/, '') === url.replace(/\/$/, ''))) return;
-          // Normalise name for canonical display
-          let cleanName = name;
-          if (url.includes("facebook.com")) cleanName = "Facebook";
-          if (url.includes("instagram.com")) cleanName = "Instagram";
-          if (url.includes("twitter.com") || url.includes("x.com")) cleanName = "X";
-          if (url.includes("linkedin.com")) cleanName = "LinkedIn";
-          if (url.includes("youtube.com")) cleanName = "YouTube";
-          if (url.includes("pinterest.com")) cleanName = "Pinterest";
-          profiles.push({ name: cleanName, url });
-        };
+        const seenUrls = new Set<string>();
 
-        // 1. Standard profiles array from Knowledge Graph (VERY RELIABLE)
-        if (knowledgeGraph?.profiles && Array.isArray(knowledgeGraph.profiles)) {
-          knowledgeGraph.profiles.forEach((p: any) => tryAddProfile(p.name, p.link));
-        }
-
-        // 2. Profiles array from Maps if available
-        if (placeResult?.profiles && Array.isArray(placeResult.profiles)) {
-          placeResult.profiles.forEach((p: any) => tryAddProfile(p.name, p.link));
-        }
-        
-        // 3. Recursive scan for any social media links inside BOTH search results
-        const socialRegexes = [
-          { name: "Facebook", regex: /https?:\/\/(www\.)?facebook\.com\/[a-zA-Z0-9_.-]+/i },
-          { name: "Instagram", regex: /https?:\/\/(www\.)?instagram\.com\/[a-zA-Z0-9_.-]+/i },
-          { name: "X", regex: /https?:\/\/(www\.)?(twitter|x)\.com\/[a-zA-Z0-9_.-]+/i },
-          { name: "LinkedIn", regex: /https?:\/\/(www\.)?linkedin\.com\/[a-zA-Z0-9_.-]+/i },
-          { name: "YouTube", regex: /https?:\/\/(www\.)?youtube\.com\/[a-zA-Z0-9_.-]+/i }
+        const socialDefs = [
+          { name: 'Facebook',  re: /https?:\/\/(www\.)?facebook\.com\/(?!sharer|share|pages\/create|ads\/|groups\/)([a-zA-Z0-9_.%-]+)\/?/i },
+          { name: 'Instagram', re: /https?:\/\/(www\.)?instagram\.com\/([a-zA-Z0-9_.]+)\/?/i },
+          { name: 'X',         re: /https?:\/\/(www\.)?(twitter|x)\.com\/(?!intent|share|home|i\/)([a-zA-Z0-9_]+)\/?/i },
+          { name: 'LinkedIn',  re: /https?:\/\/(www\.)?linkedin\.com\/(company|in)\/([a-zA-Z0-9_-]+)\/?/i },
+          { name: 'YouTube',   re: /https?:\/\/(www\.)?youtube\.com\/(channel|c|@)([a-zA-Z0-9_-]+)\/?/i },
+          { name: 'Pinterest', re: /https?:\/\/(www\.)?pinterest\.com\/([a-zA-Z0-9_]+)\/?/i },
         ];
 
-        const foundUrls = new Set<string>();
-        function scanForSocialUrls(obj: any) {
-          if (!obj) return;
-          if (typeof obj === 'string') {
-            socialRegexes.forEach(({ name, regex }) => {
-              const match = obj.match(regex);
-              if (match && match[0] && !foundUrls.has(match[0])) {
-                foundUrls.add(match[0]);
-                tryAddProfile(name, match[0]);
-              }
-            });
-          } else if (typeof obj === 'object') {
-            for (const key in obj) {
-              try {
-                scanForSocialUrls(obj[key]);
-              } catch (e) {
-                // ignore
-              }
-            }
-          }
-        }
-        
-        // Scan maps response
-        scanForSocialUrls(mapsJson);
-        // Scan google search response (very powerful for finding profiles in organic list)
-        scanForSocialUrls(googleJson);
-        
-        // 4. Fallback scan of listing raw stored in DB
-        if (profiles.length === 0 && listing.raw) {
-          scanForSocialUrls(listing.raw);
-        }
-        
-        console.log("[SERP] Final Extracted Profiles:", profiles);
-        setSocialProfiles(profiles);
+        const tryAdd = (name: string, url: string) => {
+          if (!url) return;
+          const clean = url.replace(/\/$/, '');
+          if (seenUrls.has(clean)) return;
+          seenUrls.add(clean);
+          let label = name;
+          if (url.includes('facebook.com')) label = 'Facebook';
+          else if (url.includes('instagram.com')) label = 'Instagram';
+          else if (url.includes('twitter.com') || url.includes('x.com')) label = 'X';
+          else if (url.includes('linkedin.com')) label = 'LinkedIn';
+          else if (url.includes('youtube.com')) label = 'YouTube';
+          else if (url.includes('pinterest.com')) label = 'Pinterest';
+          profiles.push({ name: label, url: clean });
+        };
 
+        const scanObj = (obj: any, depth = 0): void => {
+          if (!obj || depth > 8) return;
+          if (typeof obj === 'string') {
+            for (const { name, re } of socialDefs) {
+              const m = obj.match(re);
+              if (m) tryAdd(name, m[0]);
+            }
+          } else if (typeof obj === 'object') {
+            for (const k in obj) { try { scanObj(obj[k], depth + 1); } catch { /* */ } }
+          }
+        };
+
+        // Source 1: Knowledge Graph profiles[]
+        (kg?.profiles || []).forEach((p: any) => tryAdd(p.name, p.link));
+        // Source 2: Maps place profiles[]
+        (placeResult?.profiles || []).forEach((p: any) => tryAdd(p.name, p.link));
+        // Source 3: Organic result links + sitelinks
+        (googleJson?.organic_results || []).slice(0, 8).forEach((r: any) => {
+          if (r.link) scanObj(r.link);
+          (r.sitelinks?.inline || []).forEach((s: any) => { if (s.link) scanObj(s.link); });
+        });
+        // Source 4: Deep scan knowledge graph + place result objects
+        scanObj(kg);
+        scanObj(placeResult);
+
+        // Source 5: Fallback — site-specific Google search
+        if (profiles.length === 0) {
+          try {
+            console.log('[SERP] Fallback: site-specific social search...');
+            const sq = encodeURIComponent(`site:facebook.com OR site:instagram.com OR site:linkedin.com OR site:youtube.com "${listing.name}"`);
+            const r = await fetch(`/api/serpapiProxy?engine=google&q=${sq}&api_key=${apiKey}`);
+            if (r.ok) {
+              const j = await r.json();
+              (j?.organic_results || []).slice(0, 10).forEach((res: any) => { if (res.link) scanObj(res.link); });
+            }
+          } catch (e) { console.warn('[SERP] Fallback social search failed:', e); }
+        }
+
+        console.log('[SERP] Final Profiles:', profiles);
+        if (profiles.length > 0) setSocialProfiles(profiles);
+
+        // ─── Fetch Posts ──────────────────────────────────────────────────
         const dataId = placeResult?.data_id;
         if (!dataId) return;
-
-        // Only fetch posts if they are missing from the DB
         if (!listing.posts || listing.posts.length === 0) {
-          const postsUrl = `/api/serpapiProxy?engine=google_maps_posts&data_id=${dataId}&api_key=${apiKey}`;
-          const postsRes = await fetch(postsUrl);
-          const postsJson = await postsRes.json();
-          
-          if (postsJson.posts && Array.isArray(postsJson.posts)) {
-            const mapped = postsJson.posts.map((post: any) => ({
-              title: post.title || null,
-              content: post.description || post.snippet || post.title || null,
-              photoUri: post.thumbnails?.[0] || post.thumbnail || post.thumbnail_url || post.image_url || post.media?.[0]?.thumbnail || post.media?.[0]?.url || post.images?.[0] || null,
-              publishTime: post.posted_at_text || post.date || null,
-              callToAction: post.online_link ? {
-                url: post.online_link || post.link,
-                label: post.online_link_text || "Learn more"
-              } : undefined
-            }));
-            setLivePosts(mapped);
-          }
+          try {
+            const pr = await fetch(`/api/serpapiProxy?engine=google_maps_posts&data_id=${dataId}&api_key=${apiKey}`);
+            const pj = await pr.json();
+            if (Array.isArray(pj.posts)) {
+              setLivePosts(pj.posts.map((post: any) => ({
+                title: post.title || null,
+                content: post.description || post.snippet || post.title || null,
+                photoUri: post.thumbnails?.[0] || post.thumbnail || post.thumbnail_url || post.image_url
+                  || post.media?.[0]?.thumbnail || post.media?.[0]?.url || post.images?.[0] || null,
+                publishTime: post.posted_at_text || post.date || null,
+                callToAction: post.online_link
+                  ? { url: post.online_link || post.link, label: post.online_link_text || 'Learn more' }
+                  : undefined,
+              })));
+            }
+          } catch { /* ignore */ }
         }
       } catch (err) {
-        console.error("Error fetching live data:", err);
+        console.error('Error fetching live data:', err);
       }
     };
 
-    if (listing && (!liveDescription || socialProfiles.length === 0)) {
-      fetchLiveData();
-    }
+    if (listing) fetchLiveData();
   }, [listing]);
 
   // Handle post-login redirection and listing claiming
@@ -589,7 +533,7 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
     if (currentUser) {
       processPendingClaim();
     }
-  }, [currentUser]);
+  }, [currentUser, listing?.slug]);
 
   if (loading) {
     return (
@@ -1124,10 +1068,10 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
               <div className="space-y-6 min-w-0">
                 <h2 className="text-2xl md:text-3xl font-bold break-words">About {listing.name}</h2>
                 <div className="prose prose-sm md:prose-base dark:prose-invert max-w-none text-muted-foreground leading-relaxed break-words">
-                  {liveDescription ? (
-                    <p>{liveDescription}</p>
-                  ) : listing.editorial_summary ? (
-                    <p>{listing.editorial_summary}</p>
+                  {listing.editorial_summary ? (
+                    <p>{formatDescription(listing.editorial_summary)}</p>
+                  ) : liveDescription ? (
+                    <p>{formatDescription(liveDescription)}</p>
                   ) : (
                     <p>{listing.name} is a local business{displayCategory ? ` categorized under ${displayCategory}` : ""}{listing.formatted_address ? `, located at ${listing.formatted_address}` : ""}.</p>
                   )}
@@ -1189,7 +1133,7 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
                   {listing.website && (
                     <div>
                       <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1 font-semibold">Website</p>
-                      <a href={listing.website} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-brand-blue hover:underline truncate block">
+                      <a href={listing.website?.replace(/\/+$/, "")} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-brand-blue hover:underline truncate block">
                         {listing.website.replace(/^https?:\/\//, "").replace(/\/+$/, "")}
                       </a>
                     </div>

@@ -61,14 +61,11 @@ const Listings = () => {
 
   useEffect(() => {
     if (rows.length === 0) return;
-    
-    // Universal Enrichment: Fetch live categories for ANY item that is missing from our live cache
-    const itemsToEnrich = rows.filter(r => {
-      // If we already have it cached or resolved, skip enrichment!
-      if (dynamicCategories[r.slug]) return false;
-      // Avoid duplicate requests within this page session
-      return !fetchedSlugsRef.current.has(r.slug);
-    });
+
+    // Only enrich items missing from cache — cap at 3 per page load to avoid SerpApi concurrency limits
+    const itemsToEnrich = rows
+      .filter(r => !dynamicCategories[r.slug] && !fetchedSlugsRef.current.has(r.slug))
+      .slice(0, 3); // Hard cap: SerpApi free plan = 1 concurrent search at a time
 
     if (itemsToEnrich.length === 0) return;
 
@@ -83,7 +80,7 @@ const Listings = () => {
         try {
           let city = "";
           if (item.raw?.addressComponents && Array.isArray(item.raw.addressComponents)) {
-            const comp = item.raw.addressComponents.find((c: any) => 
+            const comp = item.raw.addressComponents.find((c: any) =>
               c.types?.includes("locality") || c.types?.includes("sublocality_level_1") || c.types?.includes("sublocality")
             );
             if (comp) city = comp.longText || comp.shortText;
@@ -93,12 +90,11 @@ const Listings = () => {
             if (parts.length >= 3) city = parts[parts.length - 3];
             else if (parts.length > 1) city = parts[1];
           }
-          
+
           const searchStr = city ? `${item.name} ${city}` : item.name;
           const query = encodeURIComponent(searchStr);
-          const mapsUrl = `/api/serpapiProxy?engine=google_maps&q=${query}&api_key=${apiKey}`;
 
-          const res = await fetch(mapsUrl);
+          const res = await fetch(`/api/serpapiProxy?engine=google_maps&q=${query}&api_key=${apiKey}`);
           if (res.ok) {
             const mapsJson = await res.json();
             const local = mapsJson.local_results?.[0] || mapsJson.place_results;
@@ -111,7 +107,8 @@ const Listings = () => {
               });
             }
           }
-          await new Promise(res => setTimeout(res, 1000)); // Polite delay between serial API fetches
+          // 2-second gap: strictly serial to avoid SerpApi 429 / concurrency errors
+          await new Promise(r => setTimeout(r, 2000));
         } catch (err) {
           console.error("Failed dynamic resolve:", item.name, err);
         }
@@ -119,7 +116,7 @@ const Listings = () => {
     };
 
     processEnrichments();
-  }, [rows, dynamicCategories]);
+  }, [rows]); // Only re-run when rows change, NOT when dynamicCategories changes (prevents feedback loop)
 
   const handleDeleteListing = async (e: React.MouseEvent, slug: string) => {
     e.preventDefault();

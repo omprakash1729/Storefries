@@ -36,6 +36,8 @@ export type Database = {
           updated_at: string
           user_ratings_total: number | null
           website: string | null
+          posts: Json | null
+          user_id: string | null
         }
         Insert: {
           category?: string | null
@@ -58,6 +60,8 @@ export type Database = {
           updated_at?: string
           user_ratings_total?: number | null
           website?: string | null
+          posts?: Json | null
+          user_id?: string | null
         }
         Update: {
           category?: string | null
@@ -80,6 +84,47 @@ export type Database = {
           updated_at?: string
           user_ratings_total?: number | null
           website?: string | null
+          posts?: Json | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      leads: {
+        Row: {
+          id: string
+          created_at: string
+          name: string | null
+          email: string
+          phone: string | null
+          company: string | null
+          google_maps_url: string | null
+          user_id: string | null
+          listing_url: string | null
+          desired_domain: string | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          name?: string | null
+          email: string
+          phone?: string | null
+          company?: string | null
+          google_maps_url?: string | null
+          user_id?: string | null
+          listing_url?: string | null
+          desired_domain?: string | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          name?: string | null
+          email?: string
+          phone?: string | null
+          company?: string | null
+          google_maps_url?: string | null
+          user_id?: string | null
+          listing_url?: string | null
+          desired_domain?: string | null
         }
         Relationships: []
       }

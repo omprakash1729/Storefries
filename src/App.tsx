@@ -12,6 +12,8 @@ import Generate from "./pages/Generate";
 import Listing from "./pages/Listing";
 import Listings from "./pages/Listings";
 import NotFound from "./pages/NotFound";
+import Contact from "./pages/Contact";
+import { CookieConsent } from "@/components/CookieConsent";
 
 const queryClient = new QueryClient();
 
@@ -22,11 +24,12 @@ const AppContent = () => {
   useEffect(() => {
     const hostname = window.location.hostname;
     
-    // The main domains where the dashboard should load
     const mainDomains = [
       'localhost', 
       'storefries.vercel.app', 
-      'www.storefries.vercel.app'
+      'www.storefries.vercel.app',
+      'storefries-listing.vercel.app',
+      'www.storefries-listing.vercel.app'
       // Note: Add future custom domains (like storefries.com) here
     ];
 
@@ -79,6 +82,7 @@ const AppContent = () => {
         <Route path="/generate" element={<Generate />} />
         <Route path="/listings" element={<Listings />} />
         <Route path="/l/:slug" element={<Listing />} />
+        <Route path="/contact" element={<Contact />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
@@ -92,6 +96,7 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
+          <CookieConsent />
           <AppContent />
         </TooltipProvider>
       </HelmetProvider>

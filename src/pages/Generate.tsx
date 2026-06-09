@@ -26,9 +26,10 @@ const Generate = () => {
     if (
       !url.includes("google.com/maps") && 
       !url.includes("maps.app.goo.gl") && 
-      !url.includes("goo.gl/maps")
+      !url.includes("goo.gl/maps") &&
+      !url.includes("share.google")
     ) {
-      toast.error("Please paste a valid Google Maps or maps.app.goo.gl link");
+      toast.error("Please paste a valid Google Maps, maps.app.goo.gl, or share.google link");
       return;
     }
 
