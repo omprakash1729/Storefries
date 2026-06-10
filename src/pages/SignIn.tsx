@@ -62,7 +62,7 @@ const SignIn = () => {
           if (redirectBack) {
             navigate(redirectBack);
           } else {
-            navigate("/generate");
+            navigate("/");
           }
         }
       } catch (err) {
@@ -80,7 +80,7 @@ const SignIn = () => {
         if (redirectBack) {
           navigate(redirectBack);
         } else {
-          navigate("/generate");
+          navigate("/");
         }
       }
     });
@@ -90,7 +90,7 @@ const SignIn = () => {
 
   const handleGoogleSignIn = async () => {
     try {
-      const redirectUrl = localStorage.getItem("storefries_redirect_back_url") || "/generate";
+      const redirectUrl = localStorage.getItem("storefries_redirect_back_url") || "/";
       const pendingUrl = localStorage.getItem("storefries_pending_url");
 
       if (pendingUrl) {
@@ -217,7 +217,7 @@ const SignIn = () => {
           if (redirectBack) {
             navigate(redirectBack);
           } else {
-            navigate("/generate");
+            navigate("/");
           }
           return;
         }
@@ -287,7 +287,7 @@ const SignIn = () => {
           if (redirectBack) {
             navigate(redirectBack);
           } else {
-            navigate("/generate");
+            navigate("/");
           }
         }
       }

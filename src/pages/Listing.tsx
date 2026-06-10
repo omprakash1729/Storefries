@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Seo } from "@/components/Seo";
@@ -89,11 +89,60 @@ const formatDescription = (desc: string | null) => {
   return clean;
 };
 
+const useWindowWidth = () => {
+  const [width, setWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResize = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  return width;
+};
+
+const getDistributedColumns = (reviewsList: any[], numCols: number) => {
+  const columns: any[][] = Array.from({ length: numCols }, () => []);
+  const columnHeights = Array(numCols).fill(0);
+
+  reviewsList.forEach((review) => {
+    const textLen = review.text?.text?.length ?? 0;
+    const estimatedHeight = 150 + textLen * 0.5;
+
+    let minColIdx = 0;
+    let minHeight = columnHeights[0];
+    for (let i = 1; i < numCols; i++) {
+      if (columnHeights[i] < minHeight) {
+        minHeight = columnHeights[i];
+        minColIdx = i;
+      }
+    }
+
+    columns[minColIdx].push(review);
+    columnHeights[minColIdx] += estimatedHeight;
+  });
+
+  return columns;
+};
+
+const getColStyle = (col: any[], width: number) => {
+  if (width < 768) return {};
+
+  const hasVeryLong = col.some(r => (r.text?.text?.length ?? 0) > 800);
+  const hasLong = col.some(r => (r.text?.text?.length ?? 0) > 400);
+
+  if (hasVeryLong) return { flex: "2.5 1 350px" };
+  if (hasLong) return { flex: "1.6 1 300px" };
+  return { flex: "1 1 260px" };
+};
+
 const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
 
   const params = useParams();
   const slug = subdomainSlug || params.slug;
   const navigate = useNavigate();
+  const width = useWindowWidth();
   const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -204,6 +253,22 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
   useEffect(() => {
     if (lightboxState) {
       document.body.style.overflow = 'hidden';
+      
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "ArrowLeft") {
+          setLightboxState(s => s ? { ...s, index: (s.index - 1 + s.items.length) % s.items.length } : null);
+        } else if (e.key === "ArrowRight") {
+          setLightboxState(s => s ? { ...s, index: (s.index + 1) % s.items.length } : null);
+        } else if (e.key === "Escape") {
+          setLightboxState(null);
+        }
+      };
+
+      window.addEventListener("keydown", handleKeyDown);
+      return () => {
+        document.body.style.overflow = '';
+        window.removeEventListener("keydown", handleKeyDown);
+      };
     } else {
       document.body.style.overflow = '';
     }
@@ -563,6 +628,12 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
     text?: { text?: string };
     relativePublishTimeDescription?: string;
   }>;
+
+  const colsCount = Math.min(
+    width < 768 ? 1 : width < 1024 ? 2 : 3,
+    reviews.length
+  );
+  const distributedColumns = getDistributedColumns(reviews, colsCount);
   const dbPosts = (listing.posts ?? []) as Array<{
     title?: string;
     content?: string;
@@ -1303,46 +1374,50 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
                 </Button>
               </div>
 
-              <div className="columns-1 md:columns-2 lg:columns-3 gap-6 space-y-6">
-                {reviews.map((r, i) => (
-                  <article key={i} className="group relative break-inside-avoid rounded-3xl card-tint-blue border border-border shadow-soft p-6 md:p-8 hover:shadow-xl hover:-translate-y-1 transition-all duration-400 overflow-hidden">
-                    {/* Decorative Quote Watermark */}
-                    <span className="absolute -top-4 right-4 text-[100px] leading-none text-brand-blue/[0.03] font-serif select-none pointer-events-none transition-transform duration-500 group-hover:-translate-y-2 group-hover:text-brand-blue/[0.06]">
-                      ”
-                    </span>
-                    
-                    {/* Left Gradient Accent Line */}
-                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-brand-blue to-brand-green opacity-0 group-hover:opacity-100 transition-opacity duration-400" />
-                    
-                    <div className="flex items-center gap-4 mb-5 relative z-10">
-                      {r.authorAttribution?.photoUri ? (
-                        <img
-                          src={r.authorAttribution.photoUri}
-                          alt={r.authorAttribution.displayName ?? "Reviewer"}
-                          referrerPolicy="no-referrer"
-                          className="h-12 w-12 rounded-full object-cover ring-4 ring-muted/50 shadow-sm"
-                        />
-                      ) : (
-                        <div className="h-12 w-12 rounded-full bg-gradient-to-br from-brand-blue/20 to-brand-blue/5 flex items-center justify-center text-brand-blue font-bold text-lg ring-4 ring-muted/50 shadow-sm">
-                           {(r.authorAttribution?.displayName ?? "A")[0]}
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-foreground truncate text-[15px]">{r.authorAttribution?.displayName ?? "Anonymous"}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          {r.rating != null && <Stars value={r.rating} />}
-                          {r.relativePublishTimeDescription && (
-                            <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">{r.relativePublishTimeDescription}</span>
+              <div className="flex flex-col md:flex-row gap-6 w-full justify-center">
+                {distributedColumns.map((col, colIdx) => (
+                  <div key={colIdx} style={getColStyle(col, width)} className="space-y-6">
+                    {col.map((r, i) => (
+                      <article key={`${colIdx}-${i}`} className="group relative rounded-3xl card-tint-blue border border-border shadow-soft p-6 md:p-8 hover:shadow-xl hover:-translate-y-1 transition-all duration-400 overflow-hidden">
+                        {/* Decorative Quote Watermark */}
+                        <span className="absolute -top-4 right-4 text-[100px] leading-none text-brand-blue/[0.03] font-serif select-none pointer-events-none transition-transform duration-500 group-hover:-translate-y-2 group-hover:text-brand-blue/[0.06]">
+                          ”
+                        </span>
+                        
+                        {/* Left Gradient Accent Line */}
+                        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-brand-blue to-brand-green opacity-0 group-hover:opacity-100 transition-opacity duration-400" />
+                        
+                        <div className="flex items-center gap-4 mb-5 relative z-10">
+                          {r.authorAttribution?.photoUri ? (
+                            <img
+                              src={r.authorAttribution.photoUri}
+                              alt={r.authorAttribution.displayName ?? "Reviewer"}
+                              referrerPolicy="no-referrer"
+                              className="h-12 w-12 rounded-full object-cover ring-4 ring-muted/50 shadow-sm"
+                            />
+                          ) : (
+                            <div className="h-12 w-12 rounded-full bg-gradient-to-br from-brand-blue/20 to-brand-blue/5 flex items-center justify-center text-brand-blue font-bold text-lg ring-4 ring-muted/50 shadow-sm">
+                               {(r.authorAttribution?.displayName ?? "A")[0]}
+                            </div>
                           )}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-foreground truncate text-[15px]">{r.authorAttribution?.displayName ?? "Anonymous"}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              {r.rating != null && <Stars value={r.rating} />}
+                              {r.relativePublishTimeDescription && (
+                                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">{r.relativePublishTimeDescription}</span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                    {r.text?.text && (
-                      <p className="text-[15px] text-foreground/80 leading-relaxed relative z-10 italic">
-                        "{r.text.text}"
-                      </p>
-                    )}
-                  </article>
+                        {r.text?.text && (
+                          <p className="text-[15px] text-foreground/80 leading-relaxed relative z-10 italic">
+                            "{r.text.text}"
+                          </p>
+                        )}
+                      </article>
+                    ))}
+                  </div>
                 ))}
               </div>
             </section>
@@ -1463,10 +1538,13 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
           </button>
 
           {/* Prev Button */}
-          {lightboxState.index > 0 && (
+          {lightboxState.items.length > 1 && (
             <button 
-              className="fixed left-2 md:left-6 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-3 rounded-full bg-black/50 hover:bg-black/80 transition-all z-[102]"
-              onClick={(e) => { e.stopPropagation(); setLightboxState(s => s ? { ...s, index: s.index - 1 } : null); }}
+              className="fixed left-4 md:left-8 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-3 rounded-full bg-black/50 hover:bg-black/80 border border-white/10 hover:border-white/30 transition-all z-[102]"
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                setLightboxState(s => s ? { ...s, index: (s.index - 1 + s.items.length) % s.items.length } : null); 
+              }}
               aria-label="Previous image"
             >
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
@@ -1474,10 +1552,13 @@ const ListingPage = ({ subdomainSlug }: { subdomainSlug?: string }) => {
           )}
 
           {/* Next Button */}
-          {lightboxState.index < lightboxState.items.length - 1 && (
+          {lightboxState.items.length > 1 && (
             <button 
-              className="fixed right-2 md:right-6 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-3 rounded-full bg-black/50 hover:bg-black/80 transition-all z-[102]"
-              onClick={(e) => { e.stopPropagation(); setLightboxState(s => s ? { ...s, index: s.index + 1 } : null); }}
+              className="fixed right-6 md:right-10 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-3 rounded-full bg-black/50 hover:bg-black/80 border border-white/10 hover:border-white/30 transition-all z-[102]"
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                setLightboxState(s => s ? { ...s, index: (s.index + 1) % s.items.length } : null); 
+              }}
               aria-label="Next image"
             >
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>

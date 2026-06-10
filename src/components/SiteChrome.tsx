@@ -32,7 +32,7 @@ export const SiteHeader = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/generate`
+          redirectTo: `${window.location.origin}/`
         }
       });
       if (error) throw error;
@@ -69,12 +69,6 @@ export const SiteHeader = () => {
             className={pathname === "/" ? "text-brand-blue" : "text-foreground hover:text-brand-blue"}
           >
             Home
-          </Link>
-          <Link
-            to="/generate"
-            className={pathname === "/generate" ? "text-brand-blue" : "text-foreground hover:text-brand-blue"}
-          >
-            Generate
           </Link>
           <Link
             to="/listings"
@@ -151,13 +145,6 @@ export const SiteHeader = () => {
                     className={`text-base font-semibold py-2 border-b border-border/40 transition-colors ${pathname === "/" ? "text-brand-blue" : "text-foreground hover:text-brand-blue"}`}
                   >
                     Home
-                  </Link>
-                  <Link
-                    to="/generate"
-                    onClick={() => setIsOpen(false)}
-                    className={`text-base font-semibold py-2 border-b border-border/40 transition-colors ${pathname === "/generate" ? "text-brand-blue" : "text-foreground hover:text-brand-blue"}`}
-                  >
-                    Generate
                   </Link>
                   <Link
                     to="/listings"
@@ -386,15 +373,6 @@ export const SiteFooter = () => (
             </li>
             <li>
               <Link 
-                to="/generate" 
-                className="group flex items-center gap-2 text-white/70 hover:text-[#0073c8] hover:translate-x-1.5 transition-all duration-300"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-white/20 group-hover:bg-[#0073c8] transition-colors" />
-                Generate
-              </Link>
-            </li>
-            <li>
-              <Link 
                 to="/listings" 
                 className="group flex items-center gap-2 text-white/70 hover:text-[#0073c8] hover:translate-x-1.5 transition-all duration-300"
               >
@@ -443,7 +421,7 @@ export const SiteFooter = () => (
             <p className="text-xs text-white/60 leading-relaxed">
               Instantly generate search-optimized, beautiful landing pages from Google Maps listings.
             </p>
-            <Link to="/generate" className="w-full">
+            <Link to="/" className="w-full">
               <button className="w-full py-3 px-4 rounded-xl text-xs font-extrabold btn-gradient border-0 text-white shadow-md hover:shadow-xl hover:scale-[1.02] active:scale-95 transition-all duration-300 flex items-center justify-center gap-2">
                 Generate Landing Page
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>

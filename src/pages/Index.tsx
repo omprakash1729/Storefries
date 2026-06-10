@@ -1,8 +1,13 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { toast } from "sonner";
 import { Seo } from "@/components/Seo";
 import { SiteHeader, SiteFooter } from "@/components/SiteChrome";
-import { Search, Globe, Zap, BarChart3, Users, MessageSquare, Share2, Target, ShieldCheck, TrendingUp, Quote, CheckCircle2 } from "lucide-react";
+import { Search, Globe, Zap, BarChart3, Users, MessageSquare, Share2, Target, ShieldCheck, TrendingUp, Quote, CheckCircle2, Loader2, Sparkles } from "lucide-react";
 import { motion, Variants } from "framer-motion";
 import { SoftAurora } from "@/components/SoftAurora";
 import { SplashCursor } from "@/components/SplashCursor";
@@ -22,6 +27,55 @@ const staggerContainer: Variants = {
 
 const Index = () => {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [url, setUrl] = useState("");
+
+  const handleUrlSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!url.trim()) {
+      toast.error("Please paste a Google Maps URL");
+      return;
+    }
+    
+    // Check if the URL looks like a google maps link
+    if (
+      !url.includes("google.com/maps") && 
+      !url.includes("maps.app.goo.gl") && 
+      !url.includes("goo.gl/maps") &&
+      !url.includes("share.google")
+    ) {
+      toast.error("Please paste a valid Google Maps, maps.app.goo.gl, or share.google link");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data: genData, error: genError } = await supabase.functions.invoke("generate-listing", {
+        body: { url: url.trim() },
+      });
+      
+      if (genError) {
+        let errorMsg = genError.message;
+        try {
+          if (genError.context && typeof genError.context.json === 'function') {
+            const realError = await genError.context.json().catch(() => null);
+            if (realError?.error) errorMsg = realError.error;
+          }
+        } catch (e) {
+          // ignore parsing error
+        }
+        throw new Error(errorMsg);
+      }
+      if (!genData?.slug) throw new Error(genData?.error ?? "Failed to generate page. Please check your internet or try again.");
+
+      toast.success(genData.cached ? "Loaded existing premium landing page!" : "Premium landing page generated successfully!");
+      navigate(`/l/${genData.slug}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to generate. Ensure the place is fully listed on Google Maps.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col relative overflow-hidden text-foreground transition-colors duration-300">
@@ -90,18 +144,77 @@ const Index = () => {
           </motion.div>
 
           <motion.h1 variants={fadeInUp} className="text-5xl md:text-7xl font-extrabold mb-6 tracking-tight text-foreground dark:bg-gradient-to-r dark:from-white dark:via-white dark:to-white/60 dark:bg-clip-text dark:text-transparent">
-            Automate your local <br className="hidden md:block" /> marketing presence
+            Create your landing page <br className="hidden md:block" /> in under a minute
           </motion.h1>
 
-          <motion.p variants={fadeInUp} className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-12 font-medium relative z-20">
-            Paste a Google Maps link and generate a high-converting, SEO-friendly landing page instantly. No code required.
+          <motion.p variants={fadeInUp} className="text-lg md:text-xl text-muted-foreground max-w-4xl mx-auto mb-12 font-medium relative z-20">
+            Improve your brand visibility instantly. Paste a Google Maps link and generate a high-converting, SEO-friendly landing page. No code required.
           </motion.p>
 
-          <motion.div variants={fadeInUp} className="max-w-2xl mx-auto flex flex-col sm:flex-row justify-center gap-3 relative z-20 mb-6">
-            <Button onClick={() => navigate("/generate")} className="h-14 px-12 rounded-xl font-bold text-lg btn-gradient border-0 text-white shadow-xl hover:scale-105 transition-transform duration-300">
-              Get Started
-            </Button>
-          </motion.div>
+          <motion.form 
+            variants={fadeInUp} 
+            onSubmit={handleUrlSubmit} 
+            className="max-w-2xl mx-auto flex flex-col gap-2.5 relative z-20 mb-12 w-full px-4"
+          >
+            {/* Label and popover helper above the field */}
+            <div className="text-left text-sm text-muted-foreground pl-1 flex items-center gap-1.5 flex-wrap">
+              <span>Enter Google Maps share link?</span>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button 
+                    type="button" 
+                    className="text-brand-blue dark:text-brand-green hover:underline focus:outline-none bg-transparent border-0 p-0 font-semibold cursor-pointer select-none underline decoration-dotted underline-offset-4"
+                  >
+                    Where to get?
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-5 rounded-2xl border border-border/50 bg-card/95 dark:bg-black/90 shadow-2xl backdrop-blur-md z-50 text-foreground">
+                  <div className="space-y-4">
+                    <h4 className="font-bold text-sm text-foreground">How to get Google Maps link:</h4>
+                    <ol className="list-decimal pl-4 space-y-2 text-xs text-muted-foreground">
+                      <li>Open your business page on Google Maps.</li>
+                      <li>Click the <span className="font-semibold text-foreground">"Share"</span> button.</li>
+                      <li>Click the <span className="font-semibold text-foreground">"Copy link"</span> option.</li>
+                    </ol>
+                    <div className="rounded-lg overflow-hidden border border-border/50 bg-muted/20">
+                      <img src="/how_to_get_link.png" alt="Google Maps Share Guide" className="w-full h-auto object-cover" />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Input and Button */}
+            <div className="flex flex-col sm:flex-row gap-3 items-stretch w-full">
+              <div className="relative flex-1 group">
+                <Input
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://maps.app.goo.gl/vodJBpRS9fB9mRBb9"
+                  className="px-4 h-14 text-base bg-background/60 dark:bg-black/40 border-border dark:border-white/10 rounded-xl backdrop-blur-md w-full shadow-inner focus-visible:ring-brand-blue"
+                  disabled={loading}
+                  required
+                />
+              </div>
+              <Button 
+                type="submit" 
+                className="h-14 px-8 rounded-xl font-bold text-base btn-gradient border-0 text-white shadow-xl hover:scale-[1.02] active:scale-98 transition-all duration-300 flex items-center justify-center gap-2 whitespace-nowrap sm:w-auto w-full"
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Generating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-5 w-5 text-white" />
+                    <span>Generate a website</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          </motion.form>
 
 
         </motion.section>
